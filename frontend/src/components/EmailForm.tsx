@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 
 interface EmailFormProps {
   apiUrl: string;
@@ -11,6 +13,14 @@ interface VerifiedIdentities {
   domains: string[];
 }
 
+interface Attachment {
+  filename: string;
+  content: string; // base64
+  size: number;
+}
+
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+
 export default function EmailForm({ apiUrl, token: _token, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
@@ -19,6 +29,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -78,6 +89,59 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
     return false;
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newAttachments: Attachment[] = [];
+
+    for (const file of Array.from(files)) {
+      // Validate PDF
+      if (file.type !== "application/pdf") {
+        setError(`${file.name} is not a PDF file`);
+        continue;
+      }
+
+      // Validate size
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        setError(`${file.name} is too large (max 10MB)`);
+        continue;
+      }
+
+      // Read file as base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix
+          const base64Data = result.split(",")[1];
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      newAttachments.push({
+        filename: file.name,
+        content: base64,
+        size: file.size,
+      });
+    }
+
+    setAttachments([...attachments, ...newAttachments]);
+    setError("");
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(attachments.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -103,7 +167,10 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
           recipients,
           subject,
           content,
-          attachments: [],
+          attachments: attachments.map((a) => ({
+            filename: a.filename,
+            content: a.content,
+          })),
         }),
       });
 
@@ -116,6 +183,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
         setRecipients("");
         setSubject("");
         setContent("");
+        setAttachments([]);
       } else {
         setError(data.error || "Failed to send email");
       }
@@ -213,12 +281,51 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
 
         <div className="form-group">
           <label>Content</label>
-          <textarea
+          <ReactQuill
+            theme="snow"
             value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={10}
-            required
+            onChange={setContent}
+            placeholder="Write your email content here..."
+            modules={{
+              toolbar: [
+                [{ header: [1, 2, 3, false] }],
+                ["bold", "italic", "underline", "strike"],
+                [{ list: "ordered" }, { list: "bullet" }],
+                ["link"],
+                ["clean"],
+              ],
+            }}
           />
+        </div>
+
+        <div className="form-group">
+          <label>Attachments (PDF only, max 10MB each)</label>
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            multiple
+            onChange={handleFileUpload}
+            disabled={loading}
+          />
+          {attachments.length > 0 && (
+            <div className="attachments-list">
+              {attachments.map((attachment, index) => (
+                <div key={index} className="attachment-item">
+                  <span className="attachment-name">
+                    📎 {attachment.filename} ({formatFileSize(attachment.size)})
+                  </span>
+                  <button
+                    type="button"
+                    className="remove-attachment"
+                    onClick={() => removeAttachment(index)}
+                    disabled={loading}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && <div className="error">{error}</div>}
