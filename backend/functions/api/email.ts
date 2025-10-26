@@ -18,8 +18,10 @@ const s3 = new S3Client({});
 
 export async function send(event: any) {
   try {
+    console.log("Received email send request:", JSON.stringify(event.body).substring(0, 500));
     const body = JSON.parse(event.body || "{}");
     const { sender, recipients, subject, content, attachments = [] } = body;
+    console.log("Parsed body - attachments count:", attachments.length);
 
     // Validate input
     if (!sender || !recipients || !subject || !content) {
@@ -133,9 +135,13 @@ export async function send(event: any) {
     };
   } catch (error) {
     console.error("Error creating email job:", error);
+    console.error("Error details:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to create email job" }),
+      body: JSON.stringify({
+        error: "Failed to create email job",
+        details: error instanceof Error ? error.message : String(error),
+      }),
     };
   }
 }
