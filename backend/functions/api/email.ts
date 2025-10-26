@@ -31,6 +31,17 @@ export async function send(event: any) {
       };
     }
 
+    // Get config for rate limiting
+    const userId = "default-user"; // TODO: Get from auth context
+    const configResult = await dynamo.send(
+      new GetCommand({
+        TableName: Resource.ConfigTable.name,
+        Key: { userId },
+      })
+    );
+    const rateLimit = configResult.Item?.rateLimit || 60; // Default to 60 seconds
+    console.log("Using rate limit:", rateLimit, "seconds");
+
     // Parse recipients (semicolon-separated)
     const recipientList = recipients
       .split(";")
@@ -113,18 +124,22 @@ export async function send(event: any) {
     // Send messages to SQS (max 10 per batch)
     for (let i = 0; i < uniqueRecipients.length; i += 10) {
       const batch = uniqueRecipients.slice(i, i + 10);
-      const entries = batch.map((email: string, index: number) => ({
-        Id: `${i + index}`,
-        MessageBody: JSON.stringify({
-          jobId,
-          email,
-          sender,
-          subject,
-          content,
-          attachments: attachmentKeys,
-        }),
-        DelaySeconds: Math.floor(i / 10) * 60, // 1 minute delay per batch
-      }));
+      const entries = batch.map((email: string, index: number) => {
+        const emailIndex = i + index;
+        const delaySeconds = Math.min(emailIndex * rateLimit, 900); // Max 15 minutes (SQS limit)
+        return {
+          Id: `${emailIndex}`,
+          MessageBody: JSON.stringify({
+            jobId,
+            email,
+            sender,
+            subject,
+            content,
+            attachments: attachmentKeys,
+          }),
+          DelaySeconds: delaySeconds,
+        };
+      });
 
       await sqs.send(
         new SendMessageBatchCommand({
