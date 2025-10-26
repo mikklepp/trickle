@@ -10,21 +10,8 @@ export default $config({
   },
   async run() {
     // Storage
-    const attachmentsBucket = new sst.aws.Bucket("AttachmentsBucket", {
-      transform: {
-        bucket: {
-          lifecycleConfiguration: {
-            rules: [
-              {
-                id: "DeleteOldAttachments",
-                status: "Enabled",
-                expiration: { days: 7 },
-              },
-            ],
-          },
-        },
-      },
-    });
+    // TODO: Add lifecycle policy to delete old attachments after 7 days
+    const attachmentsBucket = new sst.aws.Bucket("AttachmentsBucket");
 
     // Database
     const jobsTable = new sst.aws.Dynamo("JobsTable", {
@@ -64,11 +51,7 @@ export default $config({
     const worker = new sst.aws.Function("EmailWorker", {
       handler: "backend/functions/worker/index.handler",
       timeout: "1 minute",
-      link: [
-        attachmentsBucket,
-        jobsTable,
-        recipientsTable,
-      ],
+      link: [emailQueue, attachmentsBucket, jobsTable, recipientsTable],
       permissions: [
         {
           actions: ["ses:SendRawEmail", "ses:SendEmail"],
@@ -84,12 +67,12 @@ export default $config({
       transform: {
         route: {
           handler: {
-            link: [
-              attachmentsBucket,
-              jobsTable,
-              recipientsTable,
-              configTable,
-              emailQueue,
+            link: [attachmentsBucket, jobsTable, recipientsTable, configTable, emailQueue],
+            permissions: [
+              {
+                actions: ["ses:ListIdentities", "ses:GetIdentityVerificationAttributes"],
+                resources: ["*"],
+              },
             ],
           },
         },

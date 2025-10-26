@@ -8,19 +8,32 @@
     "deploy": "sst deploy",
     "remove": "sst remove",
     "console": "sst console",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "sst": "^3.3.0",
-    "typescript": "^5.6.0",
+    "@types/aws-lambda": "^8.10.156",
+    "@types/node": "^24.9.1",
     "aws-cdk-lib": "^2.172.0",
-    "constructs": "^10.4.2"
+    "constructs": "^10.4.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "sst": "^3.3.0",
+    "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.699.0",
+    "@aws-sdk/client-s3": "^3.699.0",
     "@aws-sdk/client-ses": "^3.699.0",
     "@aws-sdk/client-sqs": "^3.699.0",
-    "@aws-sdk/client-dynamodb": "^3.699.0",
-    "@aws-sdk/lib-dynamodb": "^3.699.0",
-    "@aws-sdk/client-s3": "^3.699.0"
+    "@aws-sdk/lib-dynamodb": "^3.699.0"
+  },
+  "lint-staged": {
+    "*.{ts,js,json,md}": [
+      "prettier --write"
+    ]
   }
 }
