@@ -16,7 +16,7 @@ interface JobData {
   failedRecipients?: Array<{ email: string; error: string }>;
 }
 
-export default function JobStatus({ apiUrl, token, jobId }: JobStatusProps) {
+export default function JobStatus({ apiUrl, token: _token, jobId }: JobStatusProps) {
   const [searchJobId, setSearchJobId] = useState(jobId || "");
   const [jobData, setJobData] = useState<JobData | null>(null);
   const [error, setError] = useState("");

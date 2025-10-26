@@ -6,7 +6,7 @@ interface EmailFormProps {
   onJobCreated: (jobId: string) => void;
 }
 
-export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
+export default function EmailForm({ apiUrl, token: _token, onJobCreated }: EmailFormProps) {
   const [senders, setSenders] = useState<string[]>([]);
   const [sender, setSender] = useState("");
   const [recipients, setRecipients] = useState("");

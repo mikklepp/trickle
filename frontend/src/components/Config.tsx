@@ -10,7 +10,7 @@ interface ConfigData {
   maxAttachmentSize: number;
 }
 
-export default function Config({ apiUrl, token }: ConfigProps) {
+export default function Config({ apiUrl, token: _token }: ConfigProps) {
   const [config, setConfig] = useState<ConfigData>({ rateLimit: 60, maxAttachmentSize: 10485760 });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
