@@ -152,7 +152,7 @@ async function sendEmail(message: EmailMessage) {
   rawEmail += `--${boundary}--`;
 
   // Send via SES
-  await ses.send(
+  const result = await ses.send(
     new SendRawEmailCommand({
       RawMessage: {
         Data: new Uint8Array(Buffer.from(rawEmail)),
@@ -161,4 +161,7 @@ async function sendEmail(message: EmailMessage) {
       Destinations: [message.email],
     })
   );
+
+  console.log("SES Response:", JSON.stringify(result));
+  console.log("Message ID:", result.MessageId);
 }
