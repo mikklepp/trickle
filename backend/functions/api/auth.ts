@@ -10,7 +10,7 @@ export async function login(event: any) {
 
     // Simple hardcoded auth (replace with proper auth in production)
     // TODO: Integrate with Cognito or proper auth provider
-    if (username === "admin" && password === "admin") {
+    if (username === process.env.AUTH_USERNAME && password === process.env.AUTH_PASSWORD) {
       const token = createHmac("sha256", SECRET).update(`${username}:${Date.now()}`).digest("hex");
 
       return {
