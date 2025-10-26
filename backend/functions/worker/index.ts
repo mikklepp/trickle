@@ -47,7 +47,7 @@ export async function handler(event: SQSEvent) {
       );
 
       // Increment sent count on job
-      await dynamo.send(
+      const updateResult = await dynamo.send(
         new UpdateCommand({
           TableName: Resource.JobsTable.name,
           Key: { jobId: message.jobId },
@@ -55,8 +55,31 @@ export async function handler(event: SQSEvent) {
           ExpressionAttributeValues: {
             ":inc": 1,
           },
+          ReturnValues: "ALL_NEW",
         })
       );
+
+      // Check if job is complete
+      if (updateResult.Attributes) {
+        const { sent, failed, totalRecipients } = updateResult.Attributes;
+        if (sent + failed >= totalRecipients) {
+          await dynamo.send(
+            new UpdateCommand({
+              TableName: Resource.JobsTable.name,
+              Key: { jobId: message.jobId },
+              UpdateExpression: "SET #status = :status, completedAt = :completedAt",
+              ExpressionAttributeNames: {
+                "#status": "status",
+              },
+              ExpressionAttributeValues: {
+                ":status": failed > 0 ? "completed_with_errors" : "completed",
+                ":completedAt": new Date().toISOString(),
+              },
+            })
+          );
+          console.log(`Job ${message.jobId} completed: ${sent} sent, ${failed} failed`);
+        }
+      }
 
       console.log("Email sent successfully to:", message.email);
     } catch (error) {
@@ -85,7 +108,7 @@ export async function handler(event: SQSEvent) {
       );
 
       // Increment failed count on job
-      await dynamo.send(
+      const updateResult = await dynamo.send(
         new UpdateCommand({
           TableName: Resource.JobsTable.name,
           Key: { jobId: message.jobId },
@@ -93,8 +116,31 @@ export async function handler(event: SQSEvent) {
           ExpressionAttributeValues: {
             ":inc": 1,
           },
+          ReturnValues: "ALL_NEW",
         })
       );
+
+      // Check if job is complete
+      if (updateResult.Attributes) {
+        const { sent, failed, totalRecipients } = updateResult.Attributes;
+        if (sent + failed >= totalRecipients) {
+          await dynamo.send(
+            new UpdateCommand({
+              TableName: Resource.JobsTable.name,
+              Key: { jobId: message.jobId },
+              UpdateExpression: "SET #status = :status, completedAt = :completedAt",
+              ExpressionAttributeNames: {
+                "#status": "status",
+              },
+              ExpressionAttributeValues: {
+                ":status": "completed_with_errors",
+                ":completedAt": new Date().toISOString(),
+              },
+            })
+          );
+          console.log(`Job ${message.jobId} completed with errors: ${sent} sent, ${failed} failed`);
+        }
+      }
 
       throw error; // Re-throw to move message to DLQ
     }
