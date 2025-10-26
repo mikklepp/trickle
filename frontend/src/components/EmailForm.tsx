@@ -152,7 +152,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
             value={sender}
             onChange={(e) => setSender(e.target.value)}
             list="sender-suggestions"
-            placeholder="your@example.com"
+            placeholder="Type or click a recent sender below"
             required
           />
           <datalist id="sender-suggestions" key={allSuggestions.join(",")}>
@@ -160,6 +160,20 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
               <option key={email} value={email} />
             ))}
           </datalist>
+          {recentSenders.length > 0 && (
+            <div className="recent-senders">
+              {recentSenders.map((email) => (
+                <button
+                  key={email}
+                  type="button"
+                  className="sender-chip"
+                  onClick={() => setSender(email)}
+                >
+                  {email}
+                </button>
+              ))}
+            </div>
+          )}
           <small className="hint">
             {verifiedDomains.length > 0 && (
               <>
@@ -170,12 +184,6 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
             {verifiedEmails.length > 0 && (
               <>
                 ✓ Verified emails: <strong>{verifiedEmails.join(", ")}</strong>
-                <br />
-              </>
-            )}
-            {recentSenders.length > 0 && (
-              <>
-                📧 Recent: <strong>{recentSenders.join(", ")}</strong>
               </>
             )}
           </small>

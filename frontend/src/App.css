@@ -139,6 +139,32 @@
   color: #2c3e50;
 }
 
+.recent-senders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sender-chip {
+  background: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #90caf9;
+  padding: 0.4rem 0.8rem;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.sender-chip:hover {
+  background: #1976d2;
+  color: white;
+  border-color: #1976d2;
+}
+
 button[type="submit"] {
   width: 100%;
   background: #3498db;
