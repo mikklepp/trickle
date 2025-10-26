@@ -37,12 +37,17 @@ export async function send(event: any) {
       .map((email: string) => email.trim())
       .filter((email: string) => email.length > 0);
 
-    if (recipientList.length === 0) {
+    // Remove duplicates
+    const uniqueRecipients = Array.from(new Set(recipientList));
+
+    if (uniqueRecipients.length === 0) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: "No valid recipients" }),
       };
     }
+
+    console.log(`Parsed ${recipientList.length} recipients, ${uniqueRecipients.length} unique`);
 
     const jobId = randomUUID();
     const userId = "default-user"; // TODO: Get from auth context
@@ -73,7 +78,7 @@ export async function send(event: any) {
           subject,
           content,
           attachments: attachmentKeys,
-          totalRecipients: recipientList.length,
+          totalRecipients: uniqueRecipients.length,
           sent: 0,
           failed: 0,
           status: "pending",
@@ -83,7 +88,7 @@ export async function send(event: any) {
     );
 
     // Create recipient records
-    const recipientItems = recipientList.map((email: string) => ({
+    const recipientItems = uniqueRecipients.map((email: string) => ({
       PutRequest: {
         Item: {
           jobId,
@@ -106,8 +111,8 @@ export async function send(event: any) {
     }
 
     // Send messages to SQS (max 10 per batch)
-    for (let i = 0; i < recipientList.length; i += 10) {
-      const batch = recipientList.slice(i, i + 10);
+    for (let i = 0; i < uniqueRecipients.length; i += 10) {
+      const batch = uniqueRecipients.slice(i, i + 10);
       const entries = batch.map((email: string, index: number) => ({
         Id: `${i + index}`,
         MessageBody: JSON.stringify({
@@ -131,7 +136,7 @@ export async function send(event: any) {
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ jobId, totalRecipients: recipientList.length }),
+      body: JSON.stringify({ jobId, totalRecipients: uniqueRecipients.length }),
     };
   } catch (error) {
     console.error("Error creating email job:", error);
