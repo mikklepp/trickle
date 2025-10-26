@@ -20,6 +20,29 @@ function App() {
     }
   }, [token]);
 
+  // Check for jobId query parameter on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const jobId = params.get("jobId");
+    if (jobId && token) {
+      setCurrentJobId(jobId);
+      setView("status");
+    }
+  }, [token]);
+
+  // Update URL when currentJobId changes
+  useEffect(() => {
+    if (currentJobId && view === "status") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("jobId", currentJobId);
+      window.history.pushState({}, "", url.toString());
+    } else {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("jobId");
+      window.history.pushState({}, "", url.toString());
+    }
+  }, [currentJobId, view]);
+
   const handleLogout = () => {
     setToken(null);
     setView("email");
@@ -60,7 +83,14 @@ function App() {
             }}
           />
         )}
-        {view === "status" && <JobStatus apiUrl={API_URL} token={token} jobId={currentJobId} />}
+        {view === "status" && (
+          <JobStatus
+            apiUrl={API_URL}
+            token={token}
+            jobId={currentJobId}
+            onJobIdChange={setCurrentJobId}
+          />
+        )}
         {view === "config" && <Config apiUrl={API_URL} token={token} />}
       </main>
     </div>

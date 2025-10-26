@@ -10,7 +10,7 @@ interface ConfigData {
   maxAttachmentSize: number;
 }
 
-export default function Config({ apiUrl, token: _token }: ConfigProps) {
+export default function Config({ apiUrl, token }: ConfigProps) {
   const [config, setConfig] = useState<ConfigData>({ rateLimit: 60, maxAttachmentSize: 10485760 });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -22,7 +22,11 @@ export default function Config({ apiUrl, token: _token }: ConfigProps) {
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch(`${apiUrl}/config`);
+      const response = await fetch(`${apiUrl}/config`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       if (response.ok) {
         setConfig(data);
@@ -41,7 +45,10 @@ export default function Config({ apiUrl, token: _token }: ConfigProps) {
     try {
       const response = await fetch(`${apiUrl}/config`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(config),
       });
 

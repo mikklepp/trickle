@@ -38,6 +38,7 @@ export default $config({
       globalIndexes: {
         userIndex: { hashKey: "userId", rangeKey: "jobId" },
       },
+      ttl: "expiresAt",
     });
 
     const configTable = new sst.aws.Dynamo("ConfigTable", {
@@ -127,6 +128,7 @@ export default $config({
     api.route("POST /auth/login", "backend/functions/api/auth.login");
     api.route("GET /senders", "backend/functions/api/senders.list");
     api.route("POST /email/send", "backend/functions/api/email.send");
+    api.route("GET /email/jobs", "backend/functions/api/email.list");
     api.route("GET /email/status/{jobId}", "backend/functions/api/email.status");
     api.route("GET /config", "backend/functions/api/config.get");
     api.route("PUT /config", "backend/functions/api/config.update");

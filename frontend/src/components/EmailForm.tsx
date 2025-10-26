@@ -21,7 +21,7 @@ interface Attachment {
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
 
-export default function EmailForm({ apiUrl, token: _token, onJobCreated }: EmailFormProps) {
+export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
   const [recentSenders, setRecentSenders] = useState<string[]>([]);
@@ -58,7 +58,11 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
 
   const fetchSenders = async () => {
     try {
-      const response = await fetch(`${apiUrl}/senders`);
+      const response = await fetch(`${apiUrl}/senders`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       const data = (await response.json()) as VerifiedIdentities;
       setVerifiedEmails(data.emails || []);
       setVerifiedDomains(data.domains || []);
@@ -161,6 +165,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           sender,

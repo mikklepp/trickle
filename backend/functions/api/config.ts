@@ -1,13 +1,24 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { Resource } from "sst";
+import { verifyToken } from "./auth";
 
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
 
-export async function get() {
+export async function get(event: any) {
   try {
-    const userId = "default-user"; // TODO: Get from auth context
+    // Verify authentication
+    const token = event.headers?.authorization?.replace("Bearer ", "");
+    const auth = verifyToken(token);
+    if (!auth) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: "Unauthorized" }),
+      };
+    }
+
+    const userId = auth.userId;
 
     const result = await dynamo.send(
       new GetCommand({
@@ -37,7 +48,17 @@ export async function get() {
 
 export async function update(event: any) {
   try {
-    const userId = "default-user"; // TODO: Get from auth context
+    // Verify authentication
+    const token = event.headers?.authorization?.replace("Bearer ", "");
+    const auth = verifyToken(token);
+    if (!auth) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ error: "Unauthorized" }),
+      };
+    }
+
+    const userId = auth.userId;
     const body = JSON.parse(event.body || "{}");
     const { rateLimit, maxAttachmentSize } = body;
 

@@ -377,3 +377,73 @@ button[type="submit"]:disabled {
 .failed-recipients li:last-child {
   border-bottom: none;
 }
+
+/* Jobs List */
+.jobs-list {
+  margin-top: 3rem;
+}
+
+.jobs-list h3 {
+  margin: 0 0 1rem 0;
+  color: #2c3e50;
+}
+
+.jobs-list table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.jobs-list thead {
+  background: #f8f9fa;
+}
+
+.jobs-list th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #2c3e50;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.jobs-list tbody tr {
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.jobs-list tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.jobs-list tbody tr.active {
+  background: #e3f2fd;
+}
+
+.jobs-list td {
+  padding: 1rem;
+  color: #2c3e50;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: #fff4e6;
+  color: #f39c12;
+}
+
+.status-badge.completed {
+  background: #d5f4e6;
+  color: #27ae60;
+}
+
+.status-badge.completed_with_errors {
+  background: #ffe6e6;
+  color: #e74c3c;
+}
