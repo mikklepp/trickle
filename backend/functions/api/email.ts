@@ -61,7 +61,6 @@ export async function send(event: any) {
     console.log(`Parsed ${recipientList.length} recipients, ${uniqueRecipients.length} unique`);
 
     const jobId = randomUUID();
-    const userId = "default-user"; // TODO: Get from auth context
 
     // Upload attachments to S3 if provided
     const attachmentKeys: string[] = [];
