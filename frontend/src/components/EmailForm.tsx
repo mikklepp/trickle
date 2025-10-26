@@ -42,6 +42,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
     const recent = [email, ...recentSenders.filter((s) => s !== email)].slice(0, 5);
     setRecentSenders(recent);
     localStorage.setItem("recentSenders", JSON.stringify(recent));
+    console.log("Saved recent senders:", recent);
   };
 
   const fetchSenders = async () => {
@@ -154,7 +155,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
             placeholder="your@example.com"
             required
           />
-          <datalist id="sender-suggestions">
+          <datalist id="sender-suggestions" key={allSuggestions.join(",")}>
             {allSuggestions.map((email) => (
               <option key={email} value={email} />
             ))}
@@ -169,6 +170,12 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
             {verifiedEmails.length > 0 && (
               <>
                 ✓ Verified emails: <strong>{verifiedEmails.join(", ")}</strong>
+                <br />
+              </>
+            )}
+            {recentSenders.length > 0 && (
+              <>
+                📧 Recent: <strong>{recentSenders.join(", ")}</strong>
               </>
             )}
           </small>
