@@ -17,14 +17,6 @@ declare module "sst" {
       name: string;
       type: "sst.aws.Dynamo";
     };
-    EmailDLQ: {
-      type: "sst.aws.Queue";
-      url: string;
-    };
-    EmailQueue: {
-      type: "sst.aws.Queue";
-      url: string;
-    };
     EmailWorker: {
       name: string;
       type: "sst.aws.Function";
@@ -34,10 +26,6 @@ declare module "sst" {
       url: string;
     };
     JobsTable: {
-      name: string;
-      type: "sst.aws.Dynamo";
-    };
-    RecipientsTable: {
       name: string;
       type: "sst.aws.Dynamo";
     };

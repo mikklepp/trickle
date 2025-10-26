@@ -1,14 +1,15 @@
-import { SQSEvent } from "aws-lambda";
 import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { SchedulerClient, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
 import { Resource } from "sst";
 
 const ses = new SESClient({});
 const s3 = new S3Client({});
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
+const scheduler = new SchedulerClient({});
 
 interface EmailMessage {
   jobId: string;
@@ -17,133 +18,119 @@ interface EmailMessage {
   subject: string;
   content: string;
   attachments?: string[];
+  scheduleName: string;
 }
 
-export async function handler(event: SQSEvent) {
-  for (const record of event.Records) {
+export async function handler(event: EmailMessage) {
+  console.log("Worker processing email:", event.email, "for job:", event.jobId);
+
+  try {
+    // Send email
+    await sendEmail(event);
+
+    // Delete the schedule (cleanup)
     try {
-      const message: EmailMessage = JSON.parse(record.body);
-      console.log("Processing email for:", message.email);
-
-      await sendEmail(message);
-
-      // Update recipient status to sent
-      await dynamo.send(
-        new UpdateCommand({
-          TableName: Resource.RecipientsTable.name,
-          Key: {
-            jobId: message.jobId,
-            email: message.email,
-          },
-          UpdateExpression: "SET #status = :status, sentAt = :sentAt",
-          ExpressionAttributeNames: {
-            "#status": "status",
-          },
-          ExpressionAttributeValues: {
-            ":status": "sent",
-            ":sentAt": new Date().toISOString(),
-          },
+      await scheduler.send(
+        new DeleteScheduleCommand({
+          Name: event.scheduleName,
         })
       );
-
-      // Increment sent count on job
-      const updateResult = await dynamo.send(
-        new UpdateCommand({
-          TableName: Resource.JobsTable.name,
-          Key: { jobId: message.jobId },
-          UpdateExpression: "SET sent = sent + :inc",
-          ExpressionAttributeValues: {
-            ":inc": 1,
-          },
-          ReturnValues: "ALL_NEW",
-        })
-      );
-
-      // Check if job is complete
-      if (updateResult.Attributes) {
-        const { sent, failed, totalRecipients } = updateResult.Attributes;
-        if (sent + failed >= totalRecipients) {
-          await dynamo.send(
-            new UpdateCommand({
-              TableName: Resource.JobsTable.name,
-              Key: { jobId: message.jobId },
-              UpdateExpression: "SET #status = :status, completedAt = :completedAt",
-              ExpressionAttributeNames: {
-                "#status": "status",
-              },
-              ExpressionAttributeValues: {
-                ":status": failed > 0 ? "completed_with_errors" : "completed",
-                ":completedAt": new Date().toISOString(),
-              },
-            })
-          );
-          console.log(`Job ${message.jobId} completed: ${sent} sent, ${failed} failed`);
-        }
-      }
-
-      console.log("Email sent successfully to:", message.email);
-    } catch (error) {
-      console.error("Error processing message:", error);
-
-      const message: EmailMessage = JSON.parse(record.body);
-
-      // Update recipient status to failed
-      await dynamo.send(
-        new UpdateCommand({
-          TableName: Resource.RecipientsTable.name,
-          Key: {
-            jobId: message.jobId,
-            email: message.email,
-          },
-          UpdateExpression: "SET #status = :status, #error = :error",
-          ExpressionAttributeNames: {
-            "#status": "status",
-            "#error": "error",
-          },
-          ExpressionAttributeValues: {
-            ":status": "failed",
-            ":error": String(error),
-          },
-        })
-      );
-
-      // Increment failed count on job
-      const updateResult = await dynamo.send(
-        new UpdateCommand({
-          TableName: Resource.JobsTable.name,
-          Key: { jobId: message.jobId },
-          UpdateExpression: "SET failed = failed + :inc",
-          ExpressionAttributeValues: {
-            ":inc": 1,
-          },
-          ReturnValues: "ALL_NEW",
-        })
-      );
-
-      // Check if job is complete
-      if (updateResult.Attributes) {
-        const { sent, failed, totalRecipients } = updateResult.Attributes;
-        if (sent + failed >= totalRecipients) {
-          await dynamo.send(
-            new UpdateCommand({
-              TableName: Resource.JobsTable.name,
-              Key: { jobId: message.jobId },
-              UpdateExpression: "SET #status = :status, completedAt = :completedAt",
-              ExpressionAttributeNames: {
-                "#status": "status",
-              },
-              ExpressionAttributeValues: {
-                ":status": "completed_with_errors",
-                ":completedAt": new Date().toISOString(),
-              },
-            })
-          );
-          console.log(`Job ${message.jobId} completed with errors: ${sent} sent, ${failed} failed`);
-        }
-      }
-
-      throw error; // Re-throw to move message to DLQ
+      console.log("Deleted schedule:", event.scheduleName);
+    } catch (err) {
+      console.warn("Failed to delete schedule:", err);
+      // Non-critical, continue
     }
+
+    // Increment sent count on job
+    const updateResult = await dynamo.send(
+      new UpdateCommand({
+        TableName: Resource.JobsTable.name,
+        Key: { jobId: event.jobId },
+        UpdateExpression: "SET sent = sent + :inc",
+        ExpressionAttributeValues: {
+          ":inc": 1,
+        },
+        ReturnValues: "ALL_NEW",
+      })
+    );
+
+    // Check if job is complete
+    if (updateResult.Attributes) {
+      const { sent, failed, totalRecipients } = updateResult.Attributes;
+      if (sent + failed >= totalRecipients) {
+        await dynamo.send(
+          new UpdateCommand({
+            TableName: Resource.JobsTable.name,
+            Key: { jobId: event.jobId },
+            UpdateExpression: "SET #status = :status, completedAt = :completedAt",
+            ExpressionAttributeNames: {
+              "#status": "status",
+            },
+            ExpressionAttributeValues: {
+              ":status": failed > 0 ? "completed_with_errors" : "completed",
+              ":completedAt": new Date().toISOString(),
+            },
+          })
+        );
+        console.log(`Job ${event.jobId} completed: ${sent} sent, ${failed} failed`);
+      }
+    }
+
+    console.log(`Email sent successfully to: ${event.email}`);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: true }),
+    };
+  } catch (error) {
+    console.error("Error processing message:", error);
+
+    // Delete the schedule even on failure
+    try {
+      await scheduler.send(
+        new DeleteScheduleCommand({
+          Name: event.scheduleName,
+        })
+      );
+    } catch (err) {
+      console.warn("Failed to delete schedule after error:", err);
+    }
+
+    // Increment failed count on job
+    const updateResult = await dynamo.send(
+      new UpdateCommand({
+        TableName: Resource.JobsTable.name,
+        Key: { jobId: event.jobId },
+        UpdateExpression: "SET failed = failed + :inc",
+        ExpressionAttributeValues: {
+          ":inc": 1,
+        },
+        ReturnValues: "ALL_NEW",
+      })
+    );
+
+    // Check if job is complete
+    if (updateResult.Attributes) {
+      const { sent, failed, totalRecipients } = updateResult.Attributes;
+      if (sent + failed >= totalRecipients) {
+        await dynamo.send(
+          new UpdateCommand({
+            TableName: Resource.JobsTable.name,
+            Key: { jobId: event.jobId },
+            UpdateExpression: "SET #status = :status, completedAt = :completedAt",
+            ExpressionAttributeNames: {
+              "#status": "status",
+            },
+            ExpressionAttributeValues: {
+              ":status": "completed_with_errors",
+              ":completedAt": new Date().toISOString(),
+            },
+          })
+        );
+        console.log(`Job ${event.jobId} completed with errors: ${sent} sent, ${failed} failed`);
+      }
+    }
+
+    throw error; // Re-throw for EventBridge retry
   }
 }
 

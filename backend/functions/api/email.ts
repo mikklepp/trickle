@@ -1,27 +1,44 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import {
-  DynamoDBDocumentClient,
-  PutCommand,
-  GetCommand,
-  QueryCommand,
-  BatchWriteCommand,
-} from "@aws-sdk/lib-dynamodb";
-import { SQSClient, SendMessageBatchCommand } from "@aws-sdk/client-sqs";
+  SchedulerClient,
+  CreateScheduleCommand,
+  FlexibleTimeWindowMode,
+} from "@aws-sdk/client-scheduler";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Resource } from "sst";
 import { randomUUID } from "crypto";
 
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
-const sqs = new SQSClient({});
+const scheduler = new SchedulerClient({});
 const s3 = new S3Client({});
 
-export async function send(event: any) {
+export async function send(event: any, context: any) {
   try {
     console.log("Received email send request:", JSON.stringify(event.body).substring(0, 500));
     const body = JSON.parse(event.body || "{}");
     const { sender, recipients, subject, content, attachments = [] } = body;
     console.log("Parsed body - attachments count:", attachments.length);
+
+    // Extract account ID and region from current Lambda ARN
+    // Format: arn:aws:lambda:region:account-id:function:function-name
+    const currentArn = context.invokedFunctionArn;
+    const arnParts = currentArn.split(":");
+    const region = arnParts[3];
+    const accountId = arnParts[4];
+    console.log("AWS Region:", region, "Account ID:", accountId);
+
+    // Construct worker Lambda ARN
+    const workerArn = `arn:aws:lambda:${region}:${accountId}:function:${Resource.EmailWorker.name}`;
+
+    // Get scheduler role ARN from environment variable
+    const schedulerRoleArn = process.env.SCHEDULER_ROLE_ARN;
+    if (!schedulerRoleArn) {
+      throw new Error("SCHEDULER_ROLE_ARN environment variable not set");
+    }
+    console.log("Worker ARN:", workerArn);
+    console.log("Scheduler Role ARN:", schedulerRoleArn);
 
     // Validate input
     if (!sender || !recipients || !subject || !content) {
@@ -30,17 +47,6 @@ export async function send(event: any) {
         body: JSON.stringify({ error: "Missing required fields" }),
       };
     }
-
-    // Get config for rate limiting
-    const userId = "default-user"; // TODO: Get from auth context
-    const configResult = await dynamo.send(
-      new GetCommand({
-        TableName: Resource.ConfigTable.name,
-        Key: { userId },
-      })
-    );
-    const rateLimit = configResult.Item?.rateLimit || 60; // Default to 60 seconds
-    console.log("Using rate limit:", rateLimit, "seconds");
 
     // Parse recipients (semicolon-separated)
     const recipientList = recipients
@@ -61,6 +67,17 @@ export async function send(event: any) {
     console.log(`Parsed ${recipientList.length} recipients, ${uniqueRecipients.length} unique`);
 
     const jobId = randomUUID();
+    const userId = "default-user"; // TODO: Get from auth context
+
+    // Get config for rate limiting
+    const configResult = await dynamo.send(
+      new GetCommand({
+        TableName: Resource.ConfigTable.name,
+        Key: { userId },
+      })
+    );
+    const rateLimit = configResult.Item?.rateLimit || 60;
+    console.log("Using rate limit:", rateLimit, "seconds");
 
     // Upload attachments to S3 if provided
     const attachmentKeys: string[] = [];
@@ -97,53 +114,36 @@ export async function send(event: any) {
       })
     );
 
-    // Create recipient records
-    const recipientItems = uniqueRecipients.map((email: string) => ({
-      PutRequest: {
-        Item: {
-          jobId,
-          email,
-          status: "pending",
-        },
-      },
-    }));
+    // Create EventBridge schedules for each recipient
+    const now = new Date();
+    for (let i = 0; i < uniqueRecipients.length; i++) {
+      const email = uniqueRecipients[i];
+      const scheduleTime = new Date(now.getTime() + i * rateLimit * 1000);
 
-    // Batch write recipients (max 25 per batch)
-    for (let i = 0; i < recipientItems.length; i += 25) {
-      const batch = recipientItems.slice(i, i + 25);
-      await dynamo.send(
-        new BatchWriteCommand({
-          RequestItems: {
-            [Resource.RecipientsTable.name]: batch,
-          },
-        })
+      console.log(
+        `Scheduling email ${i + 1}/${uniqueRecipients.length} to ${email} at ${scheduleTime.toISOString()}`
       );
-    }
 
-    // Send messages to SQS (max 10 per batch)
-    for (let i = 0; i < uniqueRecipients.length; i += 10) {
-      const batch = uniqueRecipients.slice(i, i + 10);
-      const entries = batch.map((email: string, index: number) => {
-        const emailIndex = i + index;
-        const delaySeconds = Math.min(emailIndex * rateLimit, 900); // Max 15 minutes (SQS limit)
-        return {
-          Id: `${emailIndex}`,
-          MessageBody: JSON.stringify({
-            jobId,
-            email,
-            sender,
-            subject,
-            content,
-            attachments: attachmentKeys,
-          }),
-          DelaySeconds: delaySeconds,
-        };
-      });
-
-      await sqs.send(
-        new SendMessageBatchCommand({
-          QueueUrl: Resource.EmailQueue.url,
-          Entries: entries,
+      await scheduler.send(
+        new CreateScheduleCommand({
+          Name: `trickle-${jobId}-${i}`,
+          ScheduleExpression: `at(${scheduleTime.toISOString().slice(0, -5)})`, // Remove milliseconds
+          FlexibleTimeWindow: {
+            Mode: FlexibleTimeWindowMode.OFF,
+          },
+          Target: {
+            Arn: workerArn,
+            RoleArn: schedulerRoleArn,
+            Input: JSON.stringify({
+              jobId,
+              email,
+              sender,
+              subject,
+              content,
+              attachments: attachmentKeys,
+              scheduleName: `trickle-${jobId}-${i}`,
+            }),
+          },
         })
       );
     }
@@ -191,28 +191,6 @@ export async function status(event: any) {
       };
     }
 
-    // Get failed recipients
-    const recipientsResult = await dynamo.send(
-      new QueryCommand({
-        TableName: Resource.RecipientsTable.name,
-        KeyConditionExpression: "jobId = :jobId",
-        FilterExpression: "#status = :failed",
-        ExpressionAttributeNames: {
-          "#status": "status",
-        },
-        ExpressionAttributeValues: {
-          ":jobId": jobId,
-          ":failed": "failed",
-        },
-      })
-    );
-
-    const failedRecipients =
-      recipientsResult.Items?.map((item) => ({
-        email: item.email,
-        error: item.error,
-      })) || [];
-
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -222,7 +200,6 @@ export async function status(event: any) {
         sent: jobResult.Item.sent,
         failed: jobResult.Item.failed,
         createdAt: jobResult.Item.createdAt,
-        failedRecipients,
       }),
     };
   } catch (error) {

@@ -65,7 +65,6 @@ export default function Login({ apiUrl, onLogin }: LoginProps) {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
-        <p className="hint">Default credentials: admin / admin</p>
       </div>
     </div>
   );
