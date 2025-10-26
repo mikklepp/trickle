@@ -6,8 +6,15 @@ interface EmailFormProps {
   onJobCreated: (jobId: string) => void;
 }
 
+interface VerifiedIdentities {
+  emails: string[];
+  domains: string[];
+}
+
 export default function EmailForm({ apiUrl, token: _token, onJobCreated }: EmailFormProps) {
-  const [senders, setSenders] = useState<string[]>([]);
+  const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
+  const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
+  const [recentSenders, setRecentSenders] = useState<string[]>([]);
   const [sender, setSender] = useState("");
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
@@ -17,24 +24,71 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
 
   useEffect(() => {
     fetchSenders();
+    loadRecentSenders();
   }, []);
+
+  const loadRecentSenders = () => {
+    const recent = localStorage.getItem("recentSenders");
+    if (recent) {
+      const senders = JSON.parse(recent) as string[];
+      setRecentSenders(senders);
+      if (senders.length > 0 && !sender) {
+        setSender(senders[0]);
+      }
+    }
+  };
+
+  const saveRecentSender = (email: string) => {
+    const recent = [email, ...recentSenders.filter((s) => s !== email)].slice(0, 5);
+    setRecentSenders(recent);
+    localStorage.setItem("recentSenders", JSON.stringify(recent));
+  };
 
   const fetchSenders = async () => {
     try {
       const response = await fetch(`${apiUrl}/senders`);
-      const data = await response.json();
-      setSenders(data.senders || []);
-      if (data.senders && data.senders.length > 0) {
-        setSender(data.senders[0]);
+      const data = (await response.json()) as VerifiedIdentities;
+      setVerifiedEmails(data.emails || []);
+      setVerifiedDomains(data.domains || []);
+
+      // Set first available sender
+      if (!sender) {
+        if (data.emails && data.emails.length > 0) {
+          setSender(data.emails[0]);
+        }
       }
     } catch (err) {
       setError("Failed to fetch verified senders");
     }
   };
 
+  const isValidSender = (email: string): boolean => {
+    // Check if email exactly matches a verified email
+    if (verifiedEmails.includes(email)) {
+      return true;
+    }
+
+    // Check if email domain matches a verified domain
+    const domain = email.split("@")[1];
+    if (domain && verifiedDomains.includes(domain)) {
+      return true;
+    }
+
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // Validate sender
+    if (!isValidSender(sender)) {
+      setError(
+        `Invalid sender email. Must be a verified email or from a verified domain (${verifiedDomains.join(", ")})`
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -55,6 +109,7 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
       const data = await response.json();
 
       if (response.ok) {
+        saveRecentSender(sender);
         onJobCreated(data.jobId);
         // Reset form
         setRecipients("");
@@ -70,16 +125,20 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
     }
   };
 
-  if (senders.length === 0) {
+  if (verifiedEmails.length === 0 && verifiedDomains.length === 0) {
     return (
       <div className="email-form">
         <h2>Send Email</h2>
         <p className="error">
-          No verified senders found. Please verify an email address in AWS SES first.
+          No verified senders found. Please verify an email address or domain in AWS SES first.
         </p>
       </div>
     );
   }
+
+  const allSuggestions = [...recentSenders, ...verifiedEmails].filter(
+    (email, index, self) => self.indexOf(email) === index
+  );
 
   return (
     <div className="email-form">
@@ -87,13 +146,32 @@ export default function EmailForm({ apiUrl, token: _token, onJobCreated }: Email
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>From</label>
-          <select value={sender} onChange={(e) => setSender(e.target.value)} required>
-            {senders.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+          <input
+            type="email"
+            value={sender}
+            onChange={(e) => setSender(e.target.value)}
+            list="sender-suggestions"
+            placeholder="your@example.com"
+            required
+          />
+          <datalist id="sender-suggestions">
+            {allSuggestions.map((email) => (
+              <option key={email} value={email} />
             ))}
-          </select>
+          </datalist>
+          <small className="hint">
+            {verifiedDomains.length > 0 && (
+              <>
+                ✓ Verified domains: <strong>{verifiedDomains.join(", ")}</strong>
+                <br />
+              </>
+            )}
+            {verifiedEmails.length > 0 && (
+              <>
+                ✓ Verified emails: <strong>{verifiedEmails.join(", ")}</strong>
+              </>
+            )}
+          </small>
         </div>
 
         <div className="form-group">

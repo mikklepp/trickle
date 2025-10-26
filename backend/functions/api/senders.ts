@@ -25,14 +25,21 @@ export async function list() {
     });
     const { VerificationAttributes = {} } = await ses.send(verifyCommand);
 
-    // Filter only verified identities
-    const verifiedSenders = Identities.filter(
+    // Filter only verified identities and separate emails from domains
+    const verifiedIdentities = Identities.filter(
       (identity) => VerificationAttributes[identity]?.VerificationStatus === "Success"
     );
 
+    const emails = verifiedIdentities.filter((identity) => identity.includes("@"));
+    const domains = verifiedIdentities.filter((identity) => !identity.includes("@"));
+
     return {
       statusCode: 200,
-      body: JSON.stringify({ senders: verifiedSenders }),
+      body: JSON.stringify({
+        emails,
+        domains,
+        all: verifiedIdentities,
+      }),
     };
   } catch (error) {
     console.error("Error fetching SES identities:", error);
