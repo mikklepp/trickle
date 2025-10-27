@@ -108,43 +108,37 @@ export default $config({
       ),
     });
 
-    // Frontend with custom domain for production
+    // Frontend with custom domain
+    const frontendDomain =
+      $app.stage === "production" ? "trickle.qed.fi" : `${$app.stage}.trickle.qed.fi`;
+
+    const apiDomain =
+      $app.stage === "production" ? "api.trickle.qed.fi" : `api.${$app.stage}.trickle.qed.fi`;
+
     const frontend = new sst.aws.StaticSite("Frontend", {
       path: "frontend",
       build: {
         command: "npm run build",
         output: "dist",
       },
-      domain: isDev
-        ? undefined
-        : {
-            name: "trickle.qed.fi",
-            dns: sst.aws.dns(),
-          },
+      domain: {
+        name: frontendDomain,
+        dns: sst.aws.dns(),
+      },
     });
 
-    // API with environment-aware CORS and custom domain for production
+    // API with environment-aware CORS and custom domain
     const api = new sst.aws.ApiGatewayV2("Api", {
-      domain: isDev
-        ? undefined
-        : {
-            name: "api.trickle.qed.fi",
-            dns: sst.aws.dns(),
-          },
-      cors: isDev
-        ? {
-            // Development: Allow all origins for easier testing
-            allowOrigins: ["*"],
-            allowMethods: ["*"],
-            allowHeaders: ["*"],
-          }
-        : {
-            // Production: Only allow the frontend domain
-            allowOrigins: ["https://trickle.qed.fi"],
-            allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            allowHeaders: ["Content-Type", "Authorization"],
-            allowCredentials: false,
-          },
+      domain: {
+        name: apiDomain,
+        dns: sst.aws.dns(),
+      },
+      cors: {
+        allowOrigins: [`https://${frontendDomain}`],
+        allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowHeaders: ["Content-Type", "Authorization"],
+        allowCredentials: false,
+      },
       transform: {
         route: {
           handler: {
