@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
@@ -19,6 +19,11 @@ interface Attachment {
   size: number;
 }
 
+interface Config {
+  rateLimit: number;
+  maxAttachmentSize: number;
+}
+
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
 
 export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
@@ -32,9 +37,11 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [config, setConfig] = useState<Config>({ rateLimit: 60, maxAttachmentSize: 10485760 });
 
   useEffect(() => {
     fetchSenders();
+    fetchConfig();
     loadRecentSenders();
   }, []);
 
@@ -75,6 +82,21 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       }
     } catch (err) {
       setError("Failed to fetch verified senders");
+    }
+  };
+
+  const fetchConfig = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/config`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = (await response.json()) as Config;
+      setConfig(data);
+    } catch (err) {
+      // Use defaults on error
+      console.error("Failed to fetch config:", err);
     }
   };
 
@@ -145,6 +167,34 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  const recipientCount = useMemo(() => {
+    if (!recipients.trim()) return 0;
+    return recipients
+      .split(";")
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0).length;
+  }, [recipients]);
+
+  const estimatedTime = useMemo(() => {
+    if (recipientCount === 0) return null;
+
+    const totalSeconds = (recipientCount - 1) * config.rateLimit;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+
+    const duration = parts.join(" ");
+    const completionTime = new Date(Date.now() + totalSeconds * 1000);
+    const timeStr = completionTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return { duration, completionTime: timeStr };
+  }, [recipientCount, config.rateLimit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,7 +321,25 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
             rows={3}
             required
           />
-          <small>Separate multiple email addresses with semicolons</small>
+          <small>
+            Separate multiple email addresses with semicolons
+            {recipientCount > 0 && (
+              <>
+                <br />
+                <strong>
+                  {recipientCount} recipient{recipientCount !== 1 ? "s" : ""}
+                </strong>
+                {estimatedTime && recipientCount > 1 && (
+                  <>
+                    {" • "}
+                    Expected duration: <strong>{estimatedTime.duration}</strong>
+                    {" • "}
+                    Estimated completion: <strong>{estimatedTime.completionTime}</strong>
+                  </>
+                )}
+              </>
+            )}
+          </small>
         </div>
 
         <div className="form-group">
