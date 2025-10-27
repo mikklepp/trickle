@@ -8,10 +8,15 @@ interface ConfigProps {
 interface ConfigData {
   rateLimit: number;
   maxAttachmentSize: number;
+  headers?: Record<string, string>;
 }
 
 export default function Config({ apiUrl, token }: ConfigProps) {
-  const [config, setConfig] = useState<ConfigData>({ rateLimit: 60, maxAttachmentSize: 10485760 });
+  const [config, setConfig] = useState<ConfigData>({
+    rateLimit: 60,
+    maxAttachmentSize: 10485760,
+    headers: {},
+  });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,6 +102,68 @@ export default function Config({ apiUrl, token }: ConfigProps) {
             required
           />
           <small>Maximum attachment size in bytes (max 25MB)</small>
+        </div>
+
+        <div className="form-group">
+          <label>Email Headers</label>
+          <div style={{ marginBottom: "10px" }}>
+            {Object.entries(config.headers || {}).map(([key, value]) => (
+              <div key={key} style={{ display: "flex", gap: "5px", marginBottom: "5px" }}>
+                <input
+                  type="text"
+                  value={key}
+                  onChange={(e) => {
+                    const newHeaders = { ...config.headers };
+                    delete newHeaders[key];
+                    if (e.target.value) {
+                      newHeaders[e.target.value] = value;
+                    }
+                    setConfig({ ...config, headers: newHeaders });
+                  }}
+                  placeholder="Header name"
+                  style={{ flex: 1 }}
+                />
+                <input
+                  type="text"
+                  value={value}
+                  onChange={(e) => {
+                    setConfig({
+                      ...config,
+                      headers: { ...config.headers, [key]: e.target.value },
+                    });
+                  }}
+                  placeholder="Header value"
+                  style={{ flex: 2 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newHeaders = { ...config.headers };
+                    delete newHeaders[key];
+                    setConfig({ ...config, headers: newHeaders });
+                  }}
+                  style={{ padding: "5px 10px" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                setConfig({
+                  ...config,
+                  headers: { ...config.headers, "": "" },
+                })
+              }
+              style={{ marginTop: "5px" }}
+            >
+              + Add Header
+            </button>
+          </div>
+          <small>
+            Custom headers added to all emails. Common: List-ID, Precedence, Reply-To, X-*
+          </small>
         </div>
 
         {error && <div className="error">{error}</div>}
