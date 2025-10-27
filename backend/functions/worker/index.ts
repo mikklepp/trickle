@@ -225,9 +225,12 @@ async function sendEmail(message: EmailMessage) {
         continue;
       }
 
+      // Get content type from S3 metadata, fallback to application/octet-stream
+      const contentType = result.ContentType || "application/octet-stream";
+
       attachments.push({
-        FileName: filename || "attachment.pdf",
-        ContentType: "application/pdf",
+        FileName: filename || "attachment",
+        ContentType: contentType,
         RawContent: new Uint8Array(attachmentData),
         ContentTransferEncoding: "BASE64",
       });

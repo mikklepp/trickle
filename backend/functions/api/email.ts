@@ -254,12 +254,14 @@ export async function send(event: any, context: any) {
       // Upload attachments to S3
       for (const attachment of attachments) {
         const key = `${jobId}/${attachment.filename}`;
+        const contentType = attachment.contentType || "application/octet-stream";
+
         await s3.send(
           new PutObjectCommand({
             Bucket: Resource.AttachmentsBucket.name,
             Key: key,
             Body: Buffer.from(attachment.content, "base64"),
-            ContentType: "application/pdf",
+            ContentType: contentType,
           })
         );
         attachmentKeys.push(key);

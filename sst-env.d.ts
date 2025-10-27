@@ -17,6 +17,10 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Dynamo"
     }
+    "EmailDLQ": {
+      "type": "sst.aws.Queue"
+      "url": string
+    }
     "EmailWorker": {
       "name": string
       "type": "sst.aws.Function"

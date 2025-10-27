@@ -16,6 +16,7 @@ interface VerifiedIdentities {
 interface Attachment {
   filename: string;
   content: string; // base64
+  contentType: string;
   size: number;
 }
 
@@ -25,6 +26,13 @@ interface Config {
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_FILE_TYPES = {
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg,.jpeg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+};
 
 export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
@@ -122,9 +130,11 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     const newAttachments: Attachment[] = [];
 
     for (const file of Array.from(files)) {
-      // Validate PDF
-      if (file.type !== "application/pdf") {
-        setError(`${file.name} is not a PDF file`);
+      // Validate file type
+      if (!Object.keys(ALLOWED_FILE_TYPES).includes(file.type)) {
+        setError(
+          `${file.name} has unsupported file type. Allowed: PDF, JPEG, PNG, GIF, WebP`
+        );
         continue;
       }
 
@@ -150,6 +160,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       newAttachments.push({
         filename: file.name,
         content: base64,
+        contentType: file.type,
         size: file.size,
       });
     }
@@ -225,6 +236,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
           attachments: attachments.map((a) => ({
             filename: a.filename,
             content: a.content,
+            contentType: a.contentType,
           })),
         }),
       });
@@ -372,10 +384,10 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         </div>
 
         <div className="form-group">
-          <label>Attachments (PDF only, max 10MB each)</label>
+          <label>Attachments (PDF, JPEG, PNG, GIF, WebP - max 10MB each)</label>
           <input
             type="file"
-            accept=".pdf,application/pdf"
+            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,application/pdf,image/jpeg,image/png,image/gif,image/webp"
             multiple
             onChange={handleFileUpload}
             disabled={loading}
