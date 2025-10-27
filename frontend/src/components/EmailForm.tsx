@@ -179,7 +179,12 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const estimatedTime = useMemo(() => {
     if (recipientCount === 0) return null;
 
-    const totalSeconds = (recipientCount - 1) * config.rateLimit;
+    // First email scheduled at "now" but has ~10-30s processing delay
+    // Subsequent emails: i * rateLimit
+    // Total time: (recipientCount - 1) * rateLimit + initial delay
+    const initialDelay = 15; // Average EventBridge + Lambda processing time
+    const totalSeconds = (recipientCount - 1) * config.rateLimit + initialDelay;
+
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
