@@ -11,12 +11,17 @@ interface ConfigData {
   headers?: Record<string, string>;
 }
 
+const DEFAULT_CONFIG: ConfigData = {
+  rateLimit: 60,
+  maxAttachmentSize: 10485760,
+  headers: {
+    "List-ID": '"Monthly Newsletter" <newsletter.sarvastonvenekerho.fi>',
+    "Precedence": "bulk",
+  },
+};
+
 export default function Config({ apiUrl, token }: ConfigProps) {
-  const [config, setConfig] = useState<ConfigData>({
-    rateLimit: 60,
-    maxAttachmentSize: 10485760,
-    headers: {},
-  });
+  const [config, setConfig] = useState<ConfigData>(DEFAULT_CONFIG);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -69,6 +74,14 @@ export default function Config({ apiUrl, token }: ConfigProps) {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetDefaults = () => {
+    if (confirm("Reset all configuration to defaults?")) {
+      setConfig(DEFAULT_CONFIG);
+      setSuccess("");
+      setError("");
     }
   };
 
@@ -169,9 +182,14 @@ export default function Config({ apiUrl, token }: ConfigProps) {
         {error && <div className="error">{error}</div>}
         {success && <div className="success">{success}</div>}
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Saving..." : "Save Config"}
-        </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button type="submit" disabled={loading}>
+            {loading ? "Saving..." : "Save Config"}
+          </button>
+          <button type="button" onClick={handleResetDefaults} disabled={loading}>
+            Reset to Defaults
+          </button>
+        </div>
       </form>
     </div>
   );
