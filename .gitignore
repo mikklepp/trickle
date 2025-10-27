@@ -1,6 +1,7 @@
 node_modules
 .env
 .sst
+sst-env.d.ts
 dist
 .DS_Store
 *.log
