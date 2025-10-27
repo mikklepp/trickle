@@ -61,21 +61,22 @@ function validateContent(content: string): string | null {
 async function validateSenderIdentity(sender: string): Promise<boolean> {
   try {
     const result = await ses.send(new ListEmailIdentitiesCommand({}));
-    const verifiedEmails =
+    const verifiedIdentities =
       result.EmailIdentities?.map((id) => id.IdentityName?.toLowerCase()) || [];
     const senderLower = sender.toLowerCase();
+    const senderDomain = senderLower.split("@")[1];
 
     // Check if sender email or its domain is verified
-    const isVerified = verifiedEmails.some((verified) => {
+    const isVerified = verifiedIdentities.some((verified) => {
       if (!verified) return false;
-      // Exact match or domain match (e.g., verified domain example.com allows any@example.com)
-      return (
-        verified === senderLower ||
-        (verified.startsWith("@") && senderLower.endsWith(verified)) ||
-        (senderLower.includes("@") &&
-          verified.startsWith("@") &&
-          senderLower.split("@")[1] === verified.substring(1))
-      );
+
+      // Exact email match
+      if (verified === senderLower) return true;
+
+      // Domain match - verified identity is a domain (no @)
+      if (!verified.includes("@") && verified === senderDomain) return true;
+
+      return false;
     });
 
     return isVerified;
