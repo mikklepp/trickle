@@ -177,9 +177,9 @@ export default $config({
     api.route("GET /config", "backend/functions/api/config.get");
     api.route("PUT /config", "backend/functions/api/config.update");
 
-    // Update frontend with API URL
+    // Update frontend with API URL (use custom domain)
     frontend.environment = {
-      VITE_API_URL: api.url,
+      VITE_API_URL: `https://${apiDomain}`,
     };
   },
 });
