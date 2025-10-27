@@ -10,6 +10,7 @@ export default $config({
   },
   async run() {
     const aws = await import("@pulumi/aws");
+    const isDev = $app.stage !== "production";
 
     // Dead Letter Queue for failed email processing
     const emailDLQ = new sst.aws.Queue("EmailDLQ");
@@ -107,8 +108,31 @@ export default $config({
       ),
     });
 
-    // API
+    // Frontend
+    const frontend = new sst.aws.StaticSite("Frontend", {
+      path: "frontend",
+      build: {
+        command: "npm run build",
+        output: "dist",
+      },
+    });
+
+    // API with environment-aware CORS
     const api = new sst.aws.ApiGatewayV2("Api", {
+      cors: isDev
+        ? {
+            // Development: Allow all origins for easier testing
+            allowOrigins: ["*"],
+            allowMethods: ["*"],
+            allowHeaders: ["*"],
+          }
+        : {
+            // Production: Only allow the frontend domain
+            allowOrigins: [frontend.url],
+            allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allowHeaders: ["Content-Type", "Authorization"],
+            allowCredentials: false,
+          },
       transform: {
         route: {
           handler: {
@@ -147,16 +171,9 @@ export default $config({
     api.route("GET /config", "backend/functions/api/config.get");
     api.route("PUT /config", "backend/functions/api/config.update");
 
-    // Frontend
-    new sst.aws.StaticSite("Frontend", {
-      path: "frontend",
-      build: {
-        command: "npm run build",
-        output: "dist",
-      },
-      environment: {
-        VITE_API_URL: api.url,
-      },
-    });
+    // Update frontend with API URL
+    frontend.environment = {
+      VITE_API_URL: api.url,
+    };
   },
 });
