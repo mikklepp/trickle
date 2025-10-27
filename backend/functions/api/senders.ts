@@ -1,7 +1,7 @@
 import { SESv2Client, ListEmailIdentitiesCommand } from "@aws-sdk/client-sesv2";
 import { verifyToken } from "./auth";
 
-const ses = new SESv2Client({});
+const ses = new SESv2Client({ region: "eu-north-1" });
 
 export async function list(event: any) {
   try {

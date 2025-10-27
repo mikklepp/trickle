@@ -111,7 +111,7 @@ export default $config({
                 actions: [
                   "ses:ListIdentities",
                   "ses:GetIdentityVerificationAttributes",
-                  "sesv2:ListEmailIdentities",
+                  "ses:ListEmailIdentities",
                 ],
                 resources: ["*"],
               },
