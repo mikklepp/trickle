@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import ReactQuill from "react-quill";
+import imageCompression from "browser-image-compression";
 import "react-quill/dist/quill.snow.css";
 
 interface EmailFormProps {
@@ -129,7 +130,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
 
     const newAttachments: Attachment[] = [];
 
-    for (const file of Array.from(files)) {
+    for (let file of Array.from(files)) {
       // Validate file type
       if (!Object.keys(ALLOWED_FILE_TYPES).includes(file.type)) {
         setError(
@@ -138,7 +139,24 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         continue;
       }
 
-      // Validate size
+      // Optimize images (compress if too large)
+      const isImage = file.type.startsWith("image/");
+      if (isImage && file.size > 1024 * 1024) {
+        // Compress images larger than 1MB
+        try {
+          console.log(`Compressing ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)...`);
+          file = await imageCompression(file, {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+          });
+          console.log(`Compressed to ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        } catch (err) {
+          console.warn("Image compression failed, using original:", err);
+        }
+      }
+
+      // Validate size after compression
       if (file.size > MAX_ATTACHMENT_SIZE) {
         setError(`${file.name} is too large (max 10MB)`);
         continue;
@@ -384,7 +402,11 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         </div>
 
         <div className="form-group">
-          <label>Attachments (PDF, JPEG, PNG, GIF, WebP - max 10MB each)</label>
+          <label>
+            Attachments (PDF, JPEG, PNG, GIF, WebP - max 10MB each)
+            <br />
+            <small>Images &gt;1MB will be automatically compressed</small>
+          </label>
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,application/pdf,image/jpeg,image/png,image/gif,image/webp"
