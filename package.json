@@ -16,20 +16,20 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.156",
     "@types/node": "^24.9.1",
-    "aws-cdk-lib": "^2.172.0",
+    "aws-cdk-lib": "^2.221.0",
     "constructs": "^10.4.2",
     "husky": "^9.1.7",
-    "lint-staged": "^15.2.11",
-    "prettier": "^3.4.2",
-    "sst": "^3.3.0",
-    "typescript": "^5.6.0"
+    "lint-staged": "^16.2.6",
+    "prettier": "^3.6.2",
+    "sst": "^3.17.21",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.699.0",
-    "@aws-sdk/client-s3": "^3.699.0",
-    "@aws-sdk/client-scheduler": "^3.699.0",
+    "@aws-sdk/client-dynamodb": "^3.917.0",
+    "@aws-sdk/client-s3": "^3.917.0",
+    "@aws-sdk/client-scheduler": "^3.917.0",
     "@aws-sdk/client-sesv2": "^3.917.0",
-    "@aws-sdk/lib-dynamodb": "^3.699.0"
+    "@aws-sdk/lib-dynamodb": "^3.917.0"
   },
   "lint-staged": {
     "*.{ts,js,json,md}": [

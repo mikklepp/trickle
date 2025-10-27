@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import ReactQuill from "react-quill";
+import ReactQuill from "react-quill-new";
 import imageCompression from "browser-image-compression";
-import "react-quill/dist/quill.snow.css";
+import "react-quill-new/dist/quill.snow.css";
 
 interface EmailFormProps {
   apiUrl: string;
@@ -364,14 +364,16 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
 
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label>From</label>
+          <label htmlFor="email">From</label>
           <input
+            id="email"
             type="email"
             value={sender}
             onChange={(e) => setSender(e.target.value)}
             list="sender-suggestions"
             placeholder="Type or click a recent sender below"
             required
+            autoComplete="email"
           />
           <datalist id="sender-suggestions" key={allSuggestions.join(",")}>
             {allSuggestions.map((email) => (
@@ -408,8 +410,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         </div>
 
         <div className="form-group">
-          <label>Recipients (semicolon-separated)</label>
+          <label htmlFor="recipients">Recipients (semicolon-separated)</label>
           <textarea
+            id="recipients"
             value={recipients}
             onChange={(e) => setRecipients(e.target.value)}
             placeholder="email1@example.com; email2@example.com; email3@example.com"
@@ -438,8 +441,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         </div>
 
         <div className="form-group">
-          <label>Subject</label>
+          <label htmlFor="subject">Subject</label>
           <input
+            id="subject"
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
@@ -467,12 +471,13 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         </div>
 
         <div className="form-group">
-          <label>
+          <label htmlFor="attachments">
             Attachments (PDF, JPEG, PNG, GIF, WebP - max 10MB each)
             <br />
             <small>Images &gt;1MB will be automatically compressed</small>
           </label>
           <input
+            id="attachments"
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,application/pdf,image/jpeg,image/png,image/gif,image/webp"
             multiple
