@@ -102,7 +102,7 @@ export async function send(event: any, context: any) {
 
     console.log("Received email send request:", JSON.stringify(event.body).substring(0, 500));
     const body = JSON.parse(event.body || "{}");
-    const { sender, recipients, subject, content, attachments = [] } = body;
+    const { sender, recipients, subject, content, attachments = [], headers = {} } = body;
     console.log("Parsed body - attachments count:", attachments.length);
 
     // Extract account ID and region from current Lambda ARN
@@ -238,6 +238,7 @@ export async function send(event: any, context: any) {
           subject,
           content,
           attachments: [],
+          headers: headers || {},
           totalRecipients: uniqueRecipients.length,
           sent: 0,
           failed: 0,
@@ -309,6 +310,7 @@ export async function send(event: any, context: any) {
                 subject,
                 content,
                 attachments: attachmentKeys,
+                headers: headers || {},
                 scheduleName,
               }),
             },

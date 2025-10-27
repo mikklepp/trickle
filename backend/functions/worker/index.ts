@@ -22,6 +22,7 @@ interface EmailMessage {
   content: string;
   attachments?: string[];
   scheduleName: string;
+  headers?: Record<string, string>;
 }
 
 export async function handler(event: EmailMessage) {
@@ -255,9 +256,18 @@ async function sendEmail(message: EmailMessage) {
             Charset: "UTF-8",
           },
         },
+        Headers: [],
       },
     },
   };
+
+  // Add custom headers
+  if (message.headers) {
+    emailParams.Content.Simple.Headers = Object.entries(message.headers).map(([name, value]) => ({
+      Name: name,
+      Value: value,
+    }));
+  }
 
   // Add attachments if present
   if (attachments.length > 0) {
