@@ -463,7 +463,7 @@ export async function list(event: any) {
         ExpressionAttributeValues: {
           ":userId": userId,
         },
-        ScanIndexForward: false, // Sort by jobId descending (most recent first)
+        ScanIndexForward: false, // Sort by createdAt descending (most recent first)
         Limit: 50, // Limit to 50 most recent jobs
       })
     );

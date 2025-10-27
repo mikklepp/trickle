@@ -37,10 +37,11 @@ export default $config({
       fields: {
         jobId: "string",
         userId: "string",
+        createdAt: "string",
       },
       primaryIndex: { hashKey: "jobId" },
       globalIndexes: {
-        userIndex: { hashKey: "userId", rangeKey: "jobId" },
+        userIndex: { hashKey: "userId", rangeKey: "createdAt" },
       },
       ttl: "expiresAt",
     });
