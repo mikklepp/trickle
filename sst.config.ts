@@ -149,6 +149,8 @@ export default $config({
             link: [attachmentsBucket, jobsTable, configTable, worker],
             environment: {
               SCHEDULER_ROLE_ARN: schedulerRole.arn,
+              AUTH_USERNAME: process.env.AUTH_USERNAME || "",
+              AUTH_PASSWORD: process.env.AUTH_PASSWORD || "",
             },
             permissions: [
               {

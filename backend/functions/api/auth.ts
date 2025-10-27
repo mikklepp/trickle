@@ -41,9 +41,20 @@ export async function login(event: any) {
     const body = JSON.parse(event.body || "{}");
     const { username, password } = body;
 
-    // Simple hardcoded auth (replace with proper auth in production)
+    const VALID_USERNAME = process.env.AUTH_USERNAME;
+    const VALID_PASSWORD = process.env.AUTH_PASSWORD;
+
+    if (!VALID_USERNAME || !VALID_PASSWORD) {
+      console.error("AUTH_USERNAME or AUTH_PASSWORD not configured");
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: "Authentication not configured" }),
+      };
+    }
+
+    // Simple auth (replace with proper auth in production)
     // TODO: Integrate with Cognito or proper auth provider
-    if (username === process.env.AUTH_USERNAME && password === process.env.AUTH_PASSWORD) {
+    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
       const userId = "default-user";
       const token = createToken(username, userId);
 
