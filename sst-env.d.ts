@@ -5,33 +5,33 @@
 
 declare module "sst" {
   export interface Resource {
-    Api: {
-      type: "sst.aws.ApiGatewayV2";
-      url: string;
-    };
-    AttachmentsBucket: {
-      name: string;
-      type: "sst.aws.Bucket";
-    };
-    ConfigTable: {
-      name: string;
-      type: "sst.aws.Dynamo";
-    };
-    EmailWorker: {
-      name: string;
-      type: "sst.aws.Function";
-    };
-    Frontend: {
-      type: "sst.aws.StaticSite";
-      url: string;
-    };
-    JobsTable: {
-      name: string;
-      type: "sst.aws.Dynamo";
-    };
+    "Api": {
+      "type": "sst.aws.ApiGatewayV2"
+      "url": string
+    }
+    "AttachmentsBucket": {
+      "name": string
+      "type": "sst.aws.Bucket"
+    }
+    "ConfigTable": {
+      "name": string
+      "type": "sst.aws.Dynamo"
+    }
+    "EmailWorker": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "Frontend": {
+      "type": "sst.aws.StaticSite"
+      "url": string
+    }
+    "JobsTable": {
+      "name": string
+      "type": "sst.aws.Dynamo"
+    }
   }
 }
 /// <reference path="sst-env.d.ts" />
 
-import "sst";
-export {};
+import "sst"
+export {}

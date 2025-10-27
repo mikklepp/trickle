@@ -5,11 +5,14 @@ import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SchedulerClient, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
 import { Resource } from "sst";
 
-const ses = new SESv2Client({});
+const ses = new SESv2Client({ region: "eu-north-1" });
 const s3 = new S3Client({});
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
 const scheduler = new SchedulerClient({});
+
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
 
 interface EmailMessage {
   jobId: string;
@@ -25,8 +28,8 @@ export async function handler(event: EmailMessage) {
   console.log("Worker processing email:", event.email, "for job:", event.jobId);
 
   try {
-    // Send email
-    await sendEmail(event);
+    // Send email with retry logic
+    await sendEmailWithRetry(event);
 
     // Delete the schedule (cleanup)
     try {
@@ -95,14 +98,23 @@ export async function handler(event: EmailMessage) {
       console.warn("Failed to delete schedule after error:", err);
     }
 
-    // Increment failed count on job
+    // Increment failed count and record error details
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = (error as any).name || "Unknown";
+
     const updateResult = await dynamo.send(
       new UpdateCommand({
         TableName: Resource.JobsTable.name,
         Key: { jobId: event.jobId },
-        UpdateExpression: "SET failed = failed + :inc",
+        UpdateExpression: "SET failed = failed + :inc, lastError = :error, lastErrorAt = :errorAt",
         ExpressionAttributeValues: {
           ":inc": 1,
+          ":error": {
+            email: event.email,
+            errorName,
+            errorMessage: errorMessage.substring(0, 500), // Truncate long errors
+          },
+          ":errorAt": new Date().toISOString(),
         },
         ReturnValues: "ALL_NEW",
       })
@@ -132,6 +144,64 @@ export async function handler(event: EmailMessage) {
 
     throw error; // Re-throw for EventBridge retry
   }
+}
+
+function isRetryableError(error: any): boolean {
+  // Retry on transient errors
+  const retryableErrors = [
+    "Throttling",
+    "TooManyRequestsException",
+    "ServiceUnavailable",
+    "InternalServiceError",
+    "RequestTimeout",
+  ];
+
+  const errorName = error.name || "";
+  const errorCode = error.$metadata?.httpStatusCode;
+
+  return (
+    retryableErrors.some((e) => errorName.includes(e)) ||
+    errorCode === 429 ||
+    errorCode === 503 ||
+    errorCode === 504
+  );
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendEmailWithRetry(message: EmailMessage): Promise<void> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      await sendEmail(message);
+      return; // Success
+    } catch (error: any) {
+      lastError = error;
+      console.error(`Send attempt ${attempt + 1} failed:`, error);
+
+      // Check if error is retryable
+      if (!isRetryableError(error)) {
+        console.error("Non-retryable error, giving up:", error.name);
+        throw error;
+      }
+
+      // If this was the last attempt, throw the error
+      if (attempt === MAX_RETRIES - 1) {
+        console.error("Max retries reached, giving up");
+        throw error;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+      console.log(`Retrying in ${backoffMs}ms...`);
+      await sleep(backoffMs);
+    }
+  }
+
+  throw lastError;
 }
 
 async function sendEmail(message: EmailMessage) {

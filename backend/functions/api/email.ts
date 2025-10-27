@@ -422,8 +422,11 @@ export async function status(event: any) {
         sent: jobResult.Item.sent,
         failed: jobResult.Item.failed,
         createdAt: jobResult.Item.createdAt,
+        completedAt: jobResult.Item.completedAt,
         sender: jobResult.Item.sender,
         subject: jobResult.Item.subject,
+        lastError: jobResult.Item.lastError,
+        lastErrorAt: jobResult.Item.lastErrorAt,
       }),
     };
   } catch (error) {

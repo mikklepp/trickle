@@ -11,6 +11,9 @@ export default $config({
   async run() {
     const aws = await import("@pulumi/aws");
 
+    // Dead Letter Queue for failed email processing
+    const emailDLQ = new sst.aws.Queue("EmailDLQ");
+
     // Storage
     const attachmentsBucket = new sst.aws.Bucket("AttachmentsBucket");
 
@@ -52,7 +55,7 @@ export default $config({
     const worker = new sst.aws.Function("EmailWorker", {
       handler: "backend/functions/worker/index.handler",
       timeout: "2 minutes",
-      link: [attachmentsBucket, jobsTable],
+      link: [attachmentsBucket, jobsTable, emailDLQ],
       permissions: [
         {
           actions: ["ses:SendEmail", "sesv2:SendEmail"],
@@ -63,6 +66,13 @@ export default $config({
           resources: ["*"],
         },
       ],
+      transform: {
+        function: (args) => {
+          args.deadLetterConfig = {
+            targetArn: emailDLQ.arn,
+          };
+        },
+      },
     });
 
     // IAM Role for EventBridge Scheduler to invoke the worker Lambda

@@ -14,9 +14,15 @@ interface JobData {
   sent: number;
   failed: number;
   createdAt: string;
+  completedAt?: string;
   sender?: string;
   subject?: string;
-  failedRecipients?: Array<{ email: string; error: string }>;
+  lastError?: {
+    email: string;
+    errorName: string;
+    errorMessage: string;
+  };
+  lastErrorAt?: string;
 }
 
 interface JobListItem {
@@ -171,18 +177,33 @@ export default function JobStatus({
               <label>Created At</label>
               <span>{new Date(jobData.createdAt).toLocaleString()}</span>
             </div>
+            {jobData.completedAt && (
+              <div className="stat">
+                <label>Completed At</label>
+                <span>{new Date(jobData.completedAt).toLocaleString()}</span>
+              </div>
+            )}
           </div>
 
-          {jobData.failedRecipients && jobData.failedRecipients.length > 0 && (
-            <div className="failed-recipients">
-              <h3>Failed Recipients</h3>
-              <ul>
-                {jobData.failedRecipients.map((recipient, i) => (
-                  <li key={i}>
-                    <strong>{recipient.email}</strong>: {recipient.error}
-                  </li>
-                ))}
-              </ul>
+          {jobData.lastError && (
+            <div className="error-details">
+              <h3>Last Error</h3>
+              <div className="error-info">
+                <p>
+                  <strong>Recipient:</strong> {jobData.lastError.email}
+                </p>
+                <p>
+                  <strong>Error Type:</strong> {jobData.lastError.errorName}
+                </p>
+                <p>
+                  <strong>Message:</strong> {jobData.lastError.errorMessage}
+                </p>
+                {jobData.lastErrorAt && (
+                  <p>
+                    <strong>Time:</strong> {new Date(jobData.lastErrorAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
