@@ -108,17 +108,29 @@ export default $config({
       ),
     });
 
-    // Frontend
+    // Frontend with custom domain for production
     const frontend = new sst.aws.StaticSite("Frontend", {
       path: "frontend",
       build: {
         command: "npm run build",
         output: "dist",
       },
+      domain: isDev
+        ? undefined
+        : {
+            name: "trickle.qed.fi",
+            dns: sst.cloudflare.dns(),
+          },
     });
 
-    // API with environment-aware CORS
+    // API with environment-aware CORS and custom domain for production
     const api = new sst.aws.ApiGatewayV2("Api", {
+      domain: isDev
+        ? undefined
+        : {
+            name: "api.trickle.qed.fi",
+            dns: sst.cloudflare.dns(),
+          },
       cors: isDev
         ? {
             // Development: Allow all origins for easier testing
@@ -128,7 +140,7 @@ export default $config({
           }
         : {
             // Production: Only allow the frontend domain
-            allowOrigins: [frontend.url],
+            allowOrigins: ["https://trickle.qed.fi"],
             allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             allowHeaders: ["Content-Type", "Authorization"],
             allowCredentials: false,
