@@ -31,6 +31,10 @@ export async function get(event: any) {
     const config = result.Item || {
       rateLimit: 60, // seconds between emails
       maxAttachmentSize: 10485760, // 10MB in bytes
+      headers: {
+        "List-ID": '"Monthly Newsletter" <newsletter.sarvastonvenekerho.fi>',
+        Precedence: "bulk",
+      },
     };
 
     return {
@@ -60,7 +64,7 @@ export async function update(event: any) {
 
     const userId = auth.userId;
     const body = JSON.parse(event.body || "{}");
-    const { rateLimit, maxAttachmentSize } = body;
+    const { rateLimit, maxAttachmentSize, headers } = body;
 
     // Validate input
     if (rateLimit && (rateLimit < 1 || rateLimit > 3600)) {
@@ -81,6 +85,7 @@ export async function update(event: any) {
       userId,
       rateLimit: rateLimit || 60,
       maxAttachmentSize: maxAttachmentSize || 10485760,
+      headers: headers || {},
       updatedAt: new Date().toISOString(),
     };
 

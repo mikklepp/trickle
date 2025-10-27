@@ -24,6 +24,7 @@ interface Attachment {
 interface Config {
   rateLimit: number;
   maxAttachmentSize: number;
+  headers?: Record<string, string>;
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
@@ -43,10 +44,6 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
-  const [headers, setHeaders] = useState<Record<string, string>>({
-    "List-ID": '"Monthly Newsletter" <newsletter.sarvastonvenekerho.fi>',
-    "Precedence": "bulk",
-  });
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -255,7 +252,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
           recipients,
           subject,
           content,
-          headers,
+          headers: config.headers || {},
           attachments: attachments.map((a) => ({
             filename: a.filename,
             content: a.content,
@@ -404,58 +401,6 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
               ],
             }}
           />
-        </div>
-
-        <div className="form-group">
-          <label>Email Headers (Optional)</label>
-          <div style={{ marginBottom: "10px" }}>
-            {Object.entries(headers).map(([key, value]) => (
-              <div key={key} style={{ display: "flex", gap: "5px", marginBottom: "5px" }}>
-                <input
-                  type="text"
-                  value={key}
-                  onChange={(e) => {
-                    const newHeaders = { ...headers };
-                    delete newHeaders[key];
-                    newHeaders[e.target.value] = value;
-                    setHeaders(newHeaders);
-                  }}
-                  placeholder="Header name"
-                  style={{ flex: 1 }}
-                />
-                <input
-                  type="text"
-                  value={value}
-                  onChange={(e) => {
-                    setHeaders({ ...headers, [key]: e.target.value });
-                  }}
-                  placeholder="Header value"
-                  style={{ flex: 2 }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newHeaders = { ...headers };
-                    delete newHeaders[key];
-                    setHeaders(newHeaders);
-                  }}
-                  style={{ padding: "5px 10px" }}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setHeaders({ ...headers, "": "" })}
-              style={{ marginTop: "5px" }}
-            >
-              + Add Header
-            </button>
-          </div>
-          <small>
-            Common headers: List-ID, Precedence, Reply-To, X-Custom-Header
-          </small>
         </div>
 
         <div className="form-group">
