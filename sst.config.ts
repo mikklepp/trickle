@@ -119,7 +119,7 @@ export default $config({
         ? undefined
         : {
             name: "trickle.qed.fi",
-            dns: sst.cloudflare.dns(),
+            dns: sst.aws.dns(),
           },
     });
 
@@ -129,7 +129,7 @@ export default $config({
         ? undefined
         : {
             name: "api.trickle.qed.fi",
-            dns: sst.cloudflare.dns(),
+            dns: sst.aws.dns(),
           },
       cors: isDev
         ? {
