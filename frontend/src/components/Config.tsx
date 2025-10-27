@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface ConfigProps {
   apiUrl: string;
@@ -85,6 +85,26 @@ export default function Config({ apiUrl, token }: ConfigProps) {
     }
   };
 
+  const formatDuration = (totalSeconds: number): string => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+
+    return parts.join(" ");
+  };
+
+  const estimates = useMemo(() => {
+    return {
+      "100": formatDuration(100 * config.rateLimit),
+      "1000": formatDuration(1000 * config.rateLimit),
+    };
+  }, [config.rateLimit]);
+
   return (
     <div className="config">
       <h2>Configuration</h2>
@@ -99,7 +119,12 @@ export default function Config({ apiUrl, token }: ConfigProps) {
             onChange={(e) => setConfig({ ...config, rateLimit: parseInt(e.target.value) })}
             required
           />
-          <small>Time to wait between sending each email (1-3600 seconds)</small>
+          <small>
+            Time to wait between sending each email (1-3600 seconds)
+            <br />
+            <strong>Estimates:</strong> 100 emails ≈ {estimates["100"]}, 1000 emails ≈{" "}
+            {estimates["1000"]}
+          </small>
         </div>
 
         <div className="form-group">
