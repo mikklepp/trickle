@@ -10,6 +10,11 @@ export default $config({
   },
   async run() {
     const aws = await import("@pulumi/aws");
+
+    // Secrets
+    const authUsername = new sst.Secret("AuthUsername");
+    const authPassword = new sst.Secret("AuthPassword");
+    const authSecret = new sst.Secret("AuthSecret");
     const isDev = $app.stage !== "production";
 
     // Dead Letter Queue for failed email processing
@@ -146,11 +151,17 @@ export default $config({
       transform: {
         route: {
           handler: {
-            link: [attachmentsBucket, jobsTable, configTable, worker],
+            link: [
+              attachmentsBucket,
+              jobsTable,
+              configTable,
+              worker,
+              authUsername,
+              authPassword,
+              authSecret,
+            ],
             environment: {
               SCHEDULER_ROLE_ARN: schedulerRole.arn,
-              AUTH_USERNAME: process.env.AUTH_USERNAME || "",
-              AUTH_PASSWORD: process.env.AUTH_PASSWORD || "",
             },
             permissions: [
               {

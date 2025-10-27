@@ -1,12 +1,7 @@
 import { createHmac } from "crypto";
+import { Resource } from "sst";
 
-const SECRET = process.env.AUTH_SECRET || "change-me-in-production";
-
-if (SECRET === "change-me-in-production") {
-  console.warn(
-    "WARNING: Using default AUTH_SECRET. Set AUTH_SECRET environment variable in production!"
-  );
-}
+const SECRET = Resource.AuthSecret.value;
 
 export function createToken(username: string, userId: string): string {
   const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
@@ -41,16 +36,8 @@ export async function login(event: any) {
     const body = JSON.parse(event.body || "{}");
     const { username, password } = body;
 
-    const VALID_USERNAME = process.env.AUTH_USERNAME;
-    const VALID_PASSWORD = process.env.AUTH_PASSWORD;
-
-    if (!VALID_USERNAME || !VALID_PASSWORD) {
-      console.error("AUTH_USERNAME or AUTH_PASSWORD not configured");
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: "Authentication not configured" }),
-      };
-    }
+    const VALID_USERNAME = Resource.AuthUsername.value;
+    const VALID_PASSWORD = Resource.AuthPassword.value;
 
     // Simple auth (replace with proper auth in production)
     // TODO: Integrate with Cognito or proper auth provider
