@@ -1,10 +1,12 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { SESv2Client, GetAccountCommand } from "@aws-sdk/client-sesv2";
 import { Resource } from "sst";
 import { verifyToken } from "./auth";
 
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
+const ses = new SESv2Client({ region: "eu-north-1" });
 
 export async function get(event: any) {
   try {
@@ -66,11 +68,18 @@ export async function update(event: any) {
     const body = JSON.parse(event.body || "{}");
     const { rateLimit, maxAttachmentSize, headers } = body;
 
+    // Get SES limits to validate rate limit (use max 20% of send rate)
+    const sesAccount = await ses.send(new GetAccountCommand({}));
+    const maxSendRate = sesAccount.SendQuota?.MaxSendRate || 1;
+    const minRateLimit = Math.ceil(1 / (maxSendRate * 0.2)); // 20% of max rate
+
     // Validate input
-    if (rateLimit && (rateLimit < 1 || rateLimit > 3600)) {
+    if (rateLimit && (rateLimit < minRateLimit || rateLimit > 3600)) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Rate limit must be between 1 and 3600 seconds" }),
+        body: JSON.stringify({
+          error: `Rate limit must be between ${minRateLimit} and 3600 seconds (SES max send rate: ${maxSendRate}/sec, using 20% = ${1 / minRateLimit}/sec)`,
+        }),
       };
     }
 

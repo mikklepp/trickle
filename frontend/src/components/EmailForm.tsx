@@ -27,6 +27,17 @@ interface Config {
   headers?: Record<string, string>;
 }
 
+interface Quota {
+  max24HourSend: number;
+  sentLast24Hours: number;
+  remaining: number;
+  usableQuota: number;
+  available: number;
+  maxSendRate: number;
+  minRateLimit: number;
+  productionAccessEnabled: boolean;
+}
+
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_FILE_TYPES = {
   "application/pdf": ".pdf",
@@ -48,10 +59,12 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<Config>({ rateLimit: 60, maxAttachmentSize: 10485760 });
+  const [quota, setQuota] = useState<Quota | null>(null);
 
   useEffect(() => {
     fetchSenders();
     fetchConfig();
+    fetchQuota();
     loadRecentSenders();
   }, []);
 
@@ -107,6 +120,20 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     } catch (err) {
       // Use defaults on error
       console.error("Failed to fetch config:", err);
+    }
+  };
+
+  const fetchQuota = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/account/quota`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = (await response.json()) as Quota;
+      setQuota(data);
+    } catch (err) {
+      console.error("Failed to fetch quota:", err);
     }
   };
 
@@ -296,9 +323,45 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     (email, index, self) => self.indexOf(email) === index
   );
 
+  const quotaPercentage = quota
+    ? Math.round(((quota.usableQuota - quota.available) / quota.usableQuota) * 100)
+    : 0;
+  const quotaColor =
+    quotaPercentage > 80 ? "red" : quotaPercentage > 50 ? "orange" : "green";
+
   return (
     <div className="email-form">
       <h2>Send Email</h2>
+
+      {quota && (
+        <div
+          className="quota-info"
+          style={{
+            padding: "10px",
+            marginBottom: "15px",
+            border: `2px solid ${quotaColor}`,
+            borderRadius: "5px",
+            backgroundColor: `${quotaColor}11`,
+          }}
+        >
+          <strong>SES Quota:</strong> {quota.available} / {quota.usableQuota} emails available
+          (using 50% of {quota.max24HourSend} daily limit)
+          <br />
+          <small>
+            Sent today: {quota.sentLast24Hours} • Remaining: {quota.remaining}
+            {!quota.productionAccessEnabled && (
+              <>
+                {" "}
+                •{" "}
+                <strong style={{ color: "orange" }}>
+                  ⚠️ Sandbox mode - Production access not enabled
+                </strong>
+              </>
+            )}
+          </small>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>From</label>

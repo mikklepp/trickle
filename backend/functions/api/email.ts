@@ -13,7 +13,7 @@ import {
   FlexibleTimeWindowMode,
 } from "@aws-sdk/client-scheduler";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { SESv2Client, ListEmailIdentitiesCommand } from "@aws-sdk/client-sesv2";
+import { SESv2Client, ListEmailIdentitiesCommand, GetAccountCommand } from "@aws-sdk/client-sesv2";
 import { Resource } from "sst";
 import { randomUUID } from "crypto";
 import { verifyToken } from "./auth";
@@ -210,6 +210,23 @@ export async function send(event: any, context: any) {
     }
 
     console.log(`Parsed ${recipientList.length} recipients, ${uniqueRecipients.length} unique`);
+
+    // Check SES quota (use max 50% of quota)
+    const sesAccount = await ses.send(new GetAccountCommand({}));
+    const max24HourSend = sesAccount.SendQuota?.Max24HourSend || 0;
+    const sentLast24Hours = sesAccount.SendQuota?.SentLast24Hours || 0;
+    const usableQuota = Math.floor(max24HourSend * 0.5); // 50% of quota
+    const available = Math.max(0, usableQuota - sentLast24Hours);
+
+    if (uniqueRecipients.length > available) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: `Insufficient SES quota`,
+          details: `Requested: ${uniqueRecipients.length} emails, Available: ${available} (using 50% of ${max24HourSend} daily limit, ${sentLast24Hours} already sent)`,
+        }),
+      };
+    }
 
     const jobId = randomUUID();
     const userId = auth.userId;

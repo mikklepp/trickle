@@ -180,5 +180,6 @@ export default $config({
     api.route("GET /email/status/{jobId}", "backend/functions/api/email.status");
     api.route("GET /config", "backend/functions/api/config.get");
     api.route("PUT /config", "backend/functions/api/config.update");
+    api.route("GET /account/quota", "backend/functions/api/account.quota");
   },
 });
