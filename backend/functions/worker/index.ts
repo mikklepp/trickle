@@ -1,11 +1,11 @@
-import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SchedulerClient, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
 import { Resource } from "sst";
 
-const ses = new SESClient({});
+const ses = new SESv2Client({});
 const s3 = new S3Client({});
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
@@ -135,24 +135,8 @@ export async function handler(event: EmailMessage) {
 }
 
 async function sendEmail(message: EmailMessage) {
-  // Build email with attachments
-  const boundary = `----=_Part_${Date.now()}`;
-  let rawEmail = [
-    `From: ${message.sender}`,
-    `To: ${message.email}`,
-    `Subject: ${message.subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    ``,
-    `--${boundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: 7bit`,
-    ``,
-    message.content,
-    ``,
-  ].join("\r\n");
-
-  // Add attachments if present
+  // Prepare attachments array if present
+  const attachments = [];
   if (message.attachments && message.attachments.length > 0) {
     for (const attachmentKey of message.attachments) {
       const filename = attachmentKey.split("/").pop();
@@ -166,34 +150,48 @@ async function sendEmail(message: EmailMessage) {
       );
 
       const attachmentData = await result.Body?.transformToByteArray();
-      if (!attachmentData) continue;
+      if (!attachmentData) {
+        console.warn(`Failed to fetch attachment: ${attachmentKey}`);
+        continue;
+      }
 
-      const base64Data = Buffer.from(attachmentData).toString("base64");
-
-      rawEmail += [
-        `--${boundary}`,
-        `Content-Type: application/pdf; name="${filename}"`,
-        `Content-Transfer-Encoding: base64`,
-        `Content-Disposition: attachment; filename="${filename}"`,
-        ``,
-        base64Data,
-        ``,
-      ].join("\r\n");
+      attachments.push({
+        FileName: filename || "attachment.pdf",
+        ContentType: "application/pdf",
+        RawContent: new Uint8Array(attachmentData),
+        ContentTransferEncoding: "BASE64",
+      });
     }
   }
 
-  rawEmail += `--${boundary}--`;
-
-  // Send via SES
-  const result = await ses.send(
-    new SendRawEmailCommand({
-      RawMessage: {
-        Data: new Uint8Array(Buffer.from(rawEmail)),
+  // Send via SES v2 Simple content type
+  const emailParams: any = {
+    FromEmailAddress: message.sender,
+    Destination: {
+      ToAddresses: [message.email],
+    },
+    Content: {
+      Simple: {
+        Subject: {
+          Data: message.subject,
+          Charset: "UTF-8",
+        },
+        Body: {
+          Html: {
+            Data: message.content,
+            Charset: "UTF-8",
+          },
+        },
       },
-      Source: message.sender,
-      Destinations: [message.email],
-    })
-  );
+    },
+  };
+
+  // Add attachments if present
+  if (attachments.length > 0) {
+    emailParams.Content.Simple.Attachments = attachments;
+  }
+
+  const result = await ses.send(new SendEmailCommand(emailParams));
 
   console.log("SES Response:", JSON.stringify(result));
   console.log("Message ID:", result.MessageId);

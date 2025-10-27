@@ -1,11 +1,7 @@
-import {
-  SESClient,
-  ListIdentitiesCommand,
-  GetIdentityVerificationAttributesCommand,
-} from "@aws-sdk/client-ses";
+import { SESv2Client, ListEmailIdentitiesCommand } from "@aws-sdk/client-sesv2";
 import { verifyToken } from "./auth";
 
-const ses = new SESClient({});
+const ses = new SESv2Client({});
 
 export async function list(event: any) {
   try {
@@ -19,27 +15,21 @@ export async function list(event: any) {
       };
     }
 
-    // Get all identities
-    const listCommand = new ListIdentitiesCommand({});
-    const { Identities = [] } = await ses.send(listCommand);
+    // Get all email identities with verification status (SES v2 API)
+    const listCommand = new ListEmailIdentitiesCommand({});
+    const { EmailIdentities = [] } = await ses.send(listCommand);
 
-    if (Identities.length === 0) {
+    if (EmailIdentities.length === 0) {
       return {
         statusCode: 200,
-        body: JSON.stringify({ senders: [] }),
+        body: JSON.stringify({ senders: [], emails: [], domains: [], all: [] }),
       };
     }
 
-    // Get verification status
-    const verifyCommand = new GetIdentityVerificationAttributesCommand({
-      Identities,
-    });
-    const { VerificationAttributes = {} } = await ses.send(verifyCommand);
-
     // Filter only verified identities and separate emails from domains
-    const verifiedIdentities = Identities.filter(
-      (identity) => VerificationAttributes[identity]?.VerificationStatus === "Success"
-    );
+    const verifiedIdentities = EmailIdentities.filter(
+      (identity) => identity.IdentityName && identity.VerificationStatus === "SUCCESS"
+    ).map((identity) => identity.IdentityName!);
 
     const emails = verifiedIdentities.filter((identity) => identity.includes("@"));
     const domains = verifiedIdentities.filter((identity) => !identity.includes("@"));

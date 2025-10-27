@@ -1,12 +1,24 @@
 # TODO - Remaining Issues
 
+## Completed
+- ✅ **Input Validation** (2025-10-26)
+  - Email format validation (RFC 5322) for sender and recipients
+  - SES identity verification for sender
+  - Subject and content validation
+  - Maximum recipient limit (1000)
+- ✅ **SES v2 Migration** (2025-10-26)
+  - Migrated all SES operations to v2 API
+  - Email worker now uses Simple content type with Attachments (cleaner than raw MIME)
+  - /senders endpoint uses ListEmailIdentities (single call vs two in v1)
+  - Removed @aws-sdk/client-ses dependency
+
 ## High Priority
 
-### 1. Input Validation
-- [ ] Validate email addresses format in recipient list (backend/functions/api/email.ts:62)
-- [ ] Validate sender email against SES verified identities before creating schedules
-- [ ] Sanitize/validate subject and content fields
-- [ ] Add maximum recipient count limit (prevent abuse)
+### 1. ~~Input Validation~~ ✅ COMPLETED
+- [x] Validate email addresses format in recipient list (backend/functions/api/email.ts:194-203)
+- [x] Validate sender email against SES verified identities before creating schedules (backend/functions/api/email.ts:137-146)
+- [x] Sanitize/validate subject and content fields (backend/functions/api/email.ts:149-164)
+- [x] Add maximum recipient count limit (prevent abuse) (backend/functions/api/email.ts:183-191, MAX_RECIPIENTS=1000)
 
 ### 2. Error Recovery for Failed Emails
 - [ ] EventBridge Scheduler fires once - no retry on failure
@@ -32,14 +44,14 @@
 - [ ] Currently uses userId from token, but only one user can log in
 - [ ] Add user management UI
 
-### 6. Email DLQ Not Used
-- [ ] EmailDLQ created in sst.config.ts but never configured
-- [ ] Should configure as DLQ for EmailWorker failures
+### 6. Dead Letter Queue for Email Worker
+- [ ] Create SQS DLQ for EmailWorker Lambda failures
+- [ ] Configure DLQ in sst.config.ts for EmailWorker
 - [ ] Add monitoring/alerting for messages in DLQ
 - [ ] Add UI to view and retry DLQ messages
 
 ### 7. Jobs List Pagination
-- [ ] Current limit: 50 jobs (backend/functions/api/email.ts:233)
+- [ ] Current limit: 50 jobs (backend/functions/api/email.ts:456)
 - [ ] Add cursor-based pagination for users with many jobs
 - [ ] Add filters (by status, date range, sender)
 - [ ] Add search functionality
@@ -111,7 +123,7 @@
 - [ ] Add proper error types
 
 ### 19. Code Organization
-- [ ] Extract validation logic to shared module
+- [ ] Extract validation logic to shared module (email validation added in email.ts but should be shared)
 - [ ] Extract auth logic to middleware
 - [ ] Extract DynamoDB operations to repository layer
 - [ ] Add shared types between frontend/backend

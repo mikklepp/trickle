@@ -55,7 +55,7 @@ export default $config({
       link: [attachmentsBucket, jobsTable],
       permissions: [
         {
-          actions: ["ses:SendRawEmail", "ses:SendEmail"],
+          actions: ["ses:SendEmail", "sesv2:SendEmail"],
           resources: ["*"],
         },
         {
@@ -108,7 +108,11 @@ export default $config({
             },
             permissions: [
               {
-                actions: ["ses:ListIdentities", "ses:GetIdentityVerificationAttributes"],
+                actions: [
+                  "ses:ListIdentities",
+                  "ses:GetIdentityVerificationAttributes",
+                  "sesv2:ListEmailIdentities",
+                ],
                 resources: ["*"],
               },
               {

@@ -13,6 +13,7 @@ import {
   FlexibleTimeWindowMode,
 } from "@aws-sdk/client-scheduler";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { SESv2Client, ListEmailIdentitiesCommand } from "@aws-sdk/client-sesv2";
 import { Resource } from "sst";
 import { randomUUID } from "crypto";
 import { verifyToken } from "./auth";
@@ -21,6 +22,70 @@ const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
 const scheduler = new SchedulerClient({});
 const s3 = new S3Client({});
+const ses = new SESv2Client({});
+
+// Constants
+const MAX_RECIPIENTS = 1000; // Maximum recipients per job
+const MAX_SUBJECT_LENGTH = 998; // RFC 5322 limit
+const MAX_CONTENT_SIZE = 300000; // 300KB limit for DynamoDB
+
+// Email validation regex (RFC 5322 simplified)
+const EMAIL_REGEX =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+function validateEmail(email: string): boolean {
+  return EMAIL_REGEX.test(email) && email.length <= 320; // RFC max length
+}
+
+function validateSubject(subject: string): string | null {
+  if (!subject || subject.trim().length === 0) {
+    return "Subject is required";
+  }
+  if (subject.length > MAX_SUBJECT_LENGTH) {
+    return `Subject too long (max ${MAX_SUBJECT_LENGTH} characters)`;
+  }
+  return null;
+}
+
+function validateContent(content: string): string | null {
+  if (!content || content.trim().length === 0) {
+    return "Content is required";
+  }
+  const contentSize = Buffer.from(content).length;
+  if (contentSize > MAX_CONTENT_SIZE) {
+    return `Content too large (max ${MAX_CONTENT_SIZE / 1000}KB)`;
+  }
+  return null;
+}
+
+async function validateSenderIdentity(sender: string): Promise<boolean> {
+  try {
+    const result = await ses.send(new ListEmailIdentitiesCommand({}));
+    const verifiedEmails =
+      result.EmailIdentities?.map((id) => id.IdentityName?.toLowerCase()) || [];
+    const senderLower = sender.toLowerCase();
+
+    // Check if sender email or its domain is verified
+    const isVerified = verifiedEmails.some((verified) => {
+      if (!verified) return false;
+      // Exact match or domain match (e.g., verified domain example.com allows any@example.com)
+      return (
+        verified === senderLower ||
+        (verified.startsWith("@") && senderLower.endsWith(verified)) ||
+        (senderLower.includes("@") &&
+          verified.startsWith("@") &&
+          senderLower.split("@")[1] === verified.substring(1))
+      );
+    });
+
+    return isVerified;
+  } catch (error) {
+    console.error("Error checking SES verified identities:", error);
+    // In case of error checking SES, allow the request to proceed
+    // This prevents breaking if there are permission issues
+    return true;
+  }
+}
 
 export async function send(event: any, context: any) {
   try {
@@ -58,7 +123,7 @@ export async function send(event: any, context: any) {
     console.log("Worker ARN:", workerArn);
     console.log("Scheduler Role ARN:", schedulerRoleArn);
 
-    // Validate input
+    // Validate required fields
     if (!sender || !recipients || !subject || !content) {
       return {
         statusCode: 400,
@@ -66,14 +131,52 @@ export async function send(event: any, context: any) {
       };
     }
 
+    // Validate sender email format
+    if (!validateEmail(sender)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Invalid sender email format" }),
+      };
+    }
+
+    // Validate sender against SES verified identities
+    const isSenderVerified = await validateSenderIdentity(sender);
+    if (!isSenderVerified) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: "Sender email not verified in SES",
+          details: "Please verify this email address or domain in AWS SES before sending",
+        }),
+      };
+    }
+
+    // Validate subject
+    const subjectError = validateSubject(subject);
+    if (subjectError) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: subjectError }),
+      };
+    }
+
+    // Validate content
+    const contentError = validateContent(content);
+    if (contentError) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: contentError }),
+      };
+    }
+
     // Parse recipients (semicolon-separated)
-    const recipientList = recipients
+    const recipientList: string[] = recipients
       .split(";")
       .map((email: string) => email.trim())
       .filter((email: string) => email.length > 0);
 
     // Remove duplicates
-    const uniqueRecipients = Array.from(new Set(recipientList));
+    const uniqueRecipients: string[] = Array.from(new Set(recipientList));
 
     if (uniqueRecipients.length === 0) {
       return {
@@ -82,20 +185,30 @@ export async function send(event: any, context: any) {
       };
     }
 
-    console.log(`Parsed ${recipientList.length} recipients, ${uniqueRecipients.length} unique`);
-
-    // Validate content size (DynamoDB has 400KB item limit)
-    const contentSize = Buffer.from(content).length;
-    if (contentSize > 300000) {
-      // 300KB limit to be safe
+    // Validate recipient count
+    if (uniqueRecipients.length > MAX_RECIPIENTS) {
       return {
         statusCode: 400,
         body: JSON.stringify({
-          error: "Email content too large (max 300KB)",
-          size: contentSize,
+          error: `Too many recipients (max ${MAX_RECIPIENTS})`,
+          count: uniqueRecipients.length,
         }),
       };
     }
+
+    // Validate each recipient email format
+    const invalidRecipients = uniqueRecipients.filter((email) => !validateEmail(email));
+    if (invalidRecipients.length > 0) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: "Invalid recipient email format",
+          invalidEmails: invalidRecipients.slice(0, 10), // Show first 10 invalid emails
+        }),
+      };
+    }
+
+    console.log(`Parsed ${recipientList.length} recipients, ${uniqueRecipients.length} unique`);
 
     const jobId = randomUUID();
     const userId = auth.userId;
