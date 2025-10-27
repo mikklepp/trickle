@@ -125,6 +125,9 @@ export default $config({
         name: frontendDomain,
         dns: sst.aws.dns(),
       },
+      environment: {
+        VITE_API_URL: `https://${apiDomain}`,
+      },
     });
 
     // API with environment-aware CORS and custom domain
@@ -176,10 +179,5 @@ export default $config({
     api.route("GET /email/status/{jobId}", "backend/functions/api/email.status");
     api.route("GET /config", "backend/functions/api/config.get");
     api.route("PUT /config", "backend/functions/api/config.update");
-
-    // Update frontend with API URL (use custom domain)
-    frontend.environment = {
-      VITE_API_URL: `https://${apiDomain}`,
-    };
   },
 });
