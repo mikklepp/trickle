@@ -374,6 +374,8 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
             placeholder="Type or click a recent sender below"
             required
             autoComplete="email"
+            autoCapitalize="off"
+            autoCorrect="off"
           />
           <datalist id="sender-suggestions" key={allSuggestions.join(",")}>
             {allSuggestions.map((email) => (
@@ -418,6 +420,8 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
             placeholder="email1@example.com; email2@example.com; email3@example.com"
             rows={3}
             required
+            autoCapitalize="off"
+            autoCorrect="off"
           />
           <small>
             Separate multiple email addresses with semicolons
