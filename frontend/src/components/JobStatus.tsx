@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import { format } from "date-fns";
 
 /**
- * Formats an ISO date string as ISO 8601 with local timezone
- * Example: 2025-10-28 14:12+02:00
+ * Formats an ISO date string in local time
+ * Example: 2025-10-28 14:12
  */
 function formatDate(isoString: string): string {
   const date = new Date(isoString);
-  return format(date, "yyyy-MM-dd HH:mmxxx");
+  return format(date, "yyyy-MM-dd HH:mm");
 }
 
 interface JobStatusProps {
