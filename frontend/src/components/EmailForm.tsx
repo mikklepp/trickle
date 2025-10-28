@@ -52,6 +52,16 @@ interface RecentSender {
   name?: string;
 }
 
+// Helper function to escape display name for RFC 5322 format
+function escapeDisplayName(name: string): string {
+  return name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+// Helper function to validate for CRLF (header/subject injection)
+function containsCRLF(text: string): boolean {
+  return /[\r\n]/.test(text);
+}
+
 export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
@@ -280,6 +290,18 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     e.preventDefault();
     setError("");
 
+    // Validate sender name is provided
+    if (!senderName.trim()) {
+      setError("Sender name is required");
+      return;
+    }
+
+    // Validate subject doesn't contain line breaks (CRLF injection)
+    if (containsCRLF(subject)) {
+      setError("Subject cannot contain line breaks");
+      return;
+    }
+
     // Validate sender
     if (!isValidSender(sender)) {
       setError(
@@ -291,10 +313,10 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     setLoading(true);
 
     try {
-      // Format sender as RFC 5322: "Name" <email@example.com> or just email@example.com
-      const formattedSender = senderName.trim()
-        ? `"${senderName}" <${sender}>`
-        : sender;
+      // Format sender as RFC 5322: "Name" <email@example.com>
+      // Escape display name to prevent format breakage
+      const escapedName = escapeDisplayName(senderName.trim());
+      const formattedSender = `"${escapedName}" <${sender}>`;
 
       const response = await fetch(`${apiUrl}/email/send`, {
         method: "POST",
@@ -425,13 +447,14 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         </div>
 
         <div className="form-group">
-          <label htmlFor="senderName">Sender Name (optional)</label>
+          <label htmlFor="senderName">Sender Name</label>
           <input
             id="senderName"
             type="text"
             value={senderName}
             onChange={(e) => setSenderName(e.target.value)}
             placeholder="e.g., John Doe or Support Team"
+            required
             autoCapitalize="off"
             autoCorrect="off"
           />

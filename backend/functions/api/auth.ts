@@ -1,10 +1,16 @@
-import { createHmac } from "crypto";
+import jwt, { JwtPayload } from "jsonwebtoken";
 import { getSecrets } from "../shared/secrets";
 
 let authSecret: string;
 let validUsername: string;
 let validPassword: string;
 let secretsInitialized = false;
+
+// Custom JWT payload interface
+interface TrickleJwtPayload extends JwtPayload {
+  username: string;
+  userId: string;
+}
 
 // Initialize secrets on first use
 async function initializeSecrets() {
@@ -28,13 +34,29 @@ async function initializeSecrets() {
   }
 }
 
+/**
+ * Creates a JWT token following RFC 7519 standard
+ * Includes standard claims (iat, exp) and custom claims (username, userId)
+ */
 export function createToken(username: string, userId: string): string {
-  const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-  const payload = `${username}:${userId}:${expiresAt}`;
-  const signature = createHmac("sha256", authSecret).update(payload).digest("hex");
-  return `${Buffer.from(payload).toString("base64")}.${signature}`;
+  const payload: TrickleJwtPayload = {
+    username,
+    userId,
+    sub: userId, // Standard JWT subject claim
+  };
+
+  // Sign with HS256 algorithm, 24-hour expiration
+  return jwt.sign(payload, authSecret, {
+    algorithm: "HS256",
+    expiresIn: "24h",
+    issuer: "trickle",
+  });
 }
 
+/**
+ * Verifies a JWT token and returns the payload if valid
+ * Returns null if token is invalid, expired, or verification fails
+ */
 export async function verifyToken(
   token: string
 ): Promise<{ username: string; userId: string } | null> {
@@ -42,21 +64,20 @@ export async function verifyToken(
     // Ensure secrets are initialized
     await initializeSecrets();
 
-    const [payloadB64, signature] = token.split(".");
-    if (!payloadB64 || !signature) return null;
+    // Verify token signature and expiration
+    const decoded = jwt.verify(token, authSecret, {
+      algorithms: ["HS256"],
+      issuer: "trickle",
+    }) as TrickleJwtPayload;
 
-    const payload = Buffer.from(payloadB64, "base64").toString("utf8");
-    const expectedSignature = createHmac("sha256", authSecret).update(payload).digest("hex");
+    // Extract required claims
+    if (!decoded.username || !decoded.userId) {
+      return null;
+    }
 
-    if (signature !== expectedSignature) return null;
-
-    const [username, userId, expiresAtStr] = payload.split(":");
-    const expiresAt = parseInt(expiresAtStr);
-
-    if (Date.now() > expiresAt) return null;
-
-    return { username, userId };
-  } catch {
+    return { username: decoded.username, userId: decoded.userId };
+  } catch (error) {
+    // Token verification failed (invalid signature, expired, malformed, etc.)
     return null;
   }
 }

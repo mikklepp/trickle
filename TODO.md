@@ -41,32 +41,40 @@
 - [x] Configure allowed origins for production deployment
 - [x] Environment-aware: dev allows *, production only frontend domain
 
-### 4. AUTH_SECRET Environment Variable
+### 4. ~~JWT Migration (Token Security)~~ ✅ COMPLETED (2025-10-28)
+- [x] Migrate from custom JWT format to standard RFC 7519 implementation
+- [x] Install `jsonwebtoken` standard library
+- [x] Add proper JWT claims (sub, iat, exp, iss)
+- [x] Use HS256 algorithm with 24-hour expiration
+- [x] Add TypeScript types for JWT payloads
+- [x] Maintain backward compatibility with existing authentication
+
+### 5. AUTH_SECRET Environment Variable
 - [ ] Currently allows default value "change-me-in-production"
 - [ ] Should fail-fast on startup if not properly configured
 - [ ] Add validation in sst.config.ts or Lambda initialization
 
 ## Medium Priority
 
-### 5. Multi-User Support
+### 6. Multi-User Support
 - [ ] Replace hardcoded "credentials" credentials
 - [ ] Integrate with proper auth provider (AWS Cognito, Auth0, etc.)
 - [ ] Currently uses userId from token, but only one user can log in
 - [ ] Add user management UI
 
-### 6. ~~Dead Letter Queue for Email Worker~~ ✅ COMPLETED (merged with #2)
+### 7. ~~Dead Letter Queue for Email Worker~~ ✅ COMPLETED (merged with #2)
 - [x] Create SQS DLQ for EmailWorker Lambda failures
 - [x] Configure DLQ in sst.config.ts for EmailWorker
 - [ ] Add monitoring/alerting for messages in DLQ
 - [ ] Add UI to view and retry DLQ messages
 
-### 7. Jobs List Pagination
+### 8. Jobs List Pagination
 - [ ] Current limit: 50 jobs (backend/functions/api/email.ts:456)
 - [ ] Add cursor-based pagination for users with many jobs
 - [ ] Add filters (by status, date range, sender)
 - [ ] Add search functionality
 
-### 8. Email Content Storage
+### 9. Email Content Storage
 - [ ] Large emails (>300KB) rejected due to DynamoDB limit
 - [ ] Consider storing content in S3 for large emails
 - [ ] Store S3 key in DynamoDB, fetch on-demand
@@ -74,29 +82,29 @@
 
 ## Low Priority
 
-### 9. Attachment Validation
+### 10. Attachment Validation
 - [ ] Currently only checks PDF MIME type on frontend
 - [ ] Add backend validation of file types
 - [ ] Validate actual file content (magic bytes), not just extension
 - [ ] Add virus scanning for production use
 
-### 10. Rate Limiting at API Level
+### 11. Rate Limiting at API Level
 - [ ] No rate limiting on API endpoints
 - [ ] Could be abused to spam job creation
 - [ ] Consider API Gateway throttling or Lambda rate limiting
 
-### 11. Logging and Monitoring
+### 12. Logging and Monitoring
 - [ ] Add structured logging (JSON format)
 - [ ] Add CloudWatch metrics for success/failure rates
 - [ ] Add alarms for high failure rates
 - [ ] Add X-Ray tracing for debugging
 
-### 12. Email Preview
+### 13. Email Preview
 - [ ] Add "Preview Email" button in EmailForm
 - [ ] Show how email will look before sending
 - [ ] Render HTML content with attachments list
 
-### 13. Schedule Management
+### 14. Schedule Management
 - [ ] Add ability to view all scheduled emails for a job
 - [ ] Add ability to cancel/pause a job in progress
 - [ ] Would require listing EventBridge schedules by prefix
@@ -104,22 +112,22 @@
 
 ## Nice to Have
 
-### 14. Email Templates
+### 15. Email Templates
 - [ ] Save frequently used email templates
 - [ ] Variables/placeholders for personalization
 - [ ] Template management UI
 
-### 15. Recipient Lists
+### 16. Recipient Lists
 - [ ] Save/manage recipient groups
 - [ ] Import recipients from CSV
 - [ ] Deduplicate and validate on upload
 
-### 16. Email Analytics
+### 17. Email Analytics
 - [ ] Track open rates (requires tracking pixel)
 - [ ] Track click rates (requires link tracking)
 - [ ] Dashboard with statistics
 
-### 17. Testing
+### 18. Testing
 - [ ] Add unit tests for Lambda functions
 - [ ] Add integration tests for API endpoints
 - [ ] Add E2E tests for frontend flows
@@ -127,18 +135,18 @@
 
 ## Technical Debt
 
-### 18. TypeScript Strictness
+### 19. TypeScript Strictness
 - [ ] Enable strict mode in tsconfig
 - [ ] Fix `any` types throughout codebase
 - [ ] Add proper error types
 
-### 19. Code Organization
+### 20. Code Organization
 - [ ] Extract validation logic to shared module (email validation added in email.ts but should be shared)
 - [ ] Extract auth logic to middleware
 - [ ] Extract DynamoDB operations to repository layer
 - [ ] Add shared types between frontend/backend
 
-### 20. Documentation
+### 21. Documentation
 - [ ] Add API documentation (OpenAPI/Swagger)
 - [ ] Add inline code comments for complex logic
 - [ ] Add deployment guide

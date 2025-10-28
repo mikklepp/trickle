@@ -33,13 +33,84 @@ const MAX_CONTENT_SIZE = 300000; // 300KB limit for DynamoDB
 const EMAIL_REGEX =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-function validateEmail(email: string): boolean {
+// RFC 5322 sender format: "Display Name" <email@example.com>
+const RFC5322_SENDER_REGEX = /^"([^"]*)"\s*<([^>]+)>$/;
+
+// CRLF pattern for header injection detection
+const CRLF_PATTERN = /[\r\n]/;
+
+// Valid header name pattern (RFC 5322)
+const HEADER_NAME_PATTERN = /^[!#$%&'*+\-^_`a-z0-9|~]+$/i;
+
+/**
+ * Escapes display name for RFC 5322 format
+ * Escapes quotes and backslashes to prevent format breakage
+ * Examples:
+ *   John "Johnny" Doe => John \"Johnny\" Doe
+ *   John\Doe => John\\Doe
+ */
+function escapeDisplayName(name: string): string {
+  return name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Extracts the email address from an RFC 5322 formatted sender or plain email
+ * Examples:
+ *   "John Doe" <john@example.com> => john@example.com
+ *   john@example.com => john@example.com
+ */
+function extractEmailFromSender(sender: string): string {
+  const match = sender.match(RFC5322_SENDER_REGEX);
+  if (match) {
+    return match[2].trim();
+  }
+  return sender.trim();
+}
+
+/**
+ * Validates header name (RFC 5322 field-name) and value for injection attacks
+ * Returns error message if invalid, null if valid
+ */
+function validateHeader(name: string, value: string): string | null {
+  // Check for CRLF in header name (header injection)
+  if (CRLF_PATTERN.test(name)) {
+    return `Invalid header name: contains line breaks`;
+  }
+
+  // Check for CRLF in header value (header injection)
+  if (CRLF_PATTERN.test(value)) {
+    return `Invalid header value for "${name}": contains line breaks`;
+  }
+
+  // Validate header name format (RFC 5322)
+  if (!HEADER_NAME_PATTERN.test(name)) {
+    return `Invalid header name "${name}": contains invalid characters`;
+  }
+
+  // Check header name length
+  if (name.length > 78) {
+    return `Header name too long (max 78 characters)`;
+  }
+
+  // Check header value length (RFC 5322 recommends 998 characters max)
+  if (value.length > 998) {
+    return `Header value too long (max 998 characters)`;
+  }
+
+  return null;
+}
+
+function validateEmail(sender: string): boolean {
+  const email = extractEmailFromSender(sender);
   return EMAIL_REGEX.test(email) && email.length <= 320; // RFC max length
 }
 
 function validateSubject(subject: string): string | null {
   if (!subject || subject.trim().length === 0) {
     return "Subject is required";
+  }
+  if (CRLF_PATTERN.test(subject)) {
+    return "Subject cannot contain line breaks";
   }
   if (subject.length > MAX_SUBJECT_LENGTH) {
     return `Subject too long (max ${MAX_SUBJECT_LENGTH} characters)`;
@@ -60,18 +131,21 @@ function validateContent(content: string): string | null {
 
 async function validateSenderIdentity(sender: string): Promise<boolean> {
   try {
+    // Extract email from RFC 5322 format if needed
+    const email = extractEmailFromSender(sender);
+
     const result = await ses.send(new ListEmailIdentitiesCommand({}));
     const verifiedIdentities =
       result.EmailIdentities?.map((id) => id.IdentityName?.toLowerCase()) || [];
-    const senderLower = sender.toLowerCase();
-    const senderDomain = senderLower.split("@")[1];
+    const emailLower = email.toLowerCase();
+    const senderDomain = emailLower.split("@")[1];
 
     // Check if sender email or its domain is verified
     const isVerified = verifiedIdentities.some((verified) => {
       if (!verified) return false;
 
       // Exact email match
-      if (verified === senderLower) return true;
+      if (verified === emailLower) return true;
 
       // Domain match - verified identity is a domain (no @)
       if (!verified.includes("@") && verified === senderDomain) return true;
@@ -132,6 +206,17 @@ export async function send(event: any, context: any) {
       };
     }
 
+    // Enforce RFC 5322 format with display name
+    if (!sender.match(RFC5322_SENDER_REGEX)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error:
+            'Invalid sender format. Must include display name in format: "Display Name" <email@example.com>',
+        }),
+      };
+    }
+
     // Validate sender email format
     if (!validateEmail(sender)) {
       return {
@@ -168,6 +253,17 @@ export async function send(event: any, context: any) {
         statusCode: 400,
         body: JSON.stringify({ error: contentError }),
       };
+    }
+
+    // Validate custom headers
+    for (const [headerName, headerValue] of Object.entries(headers)) {
+      const headerError = validateHeader(headerName, String(headerValue));
+      if (headerError) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: headerError }),
+        };
+      }
     }
 
     // Parse recipients (semicolon-separated)

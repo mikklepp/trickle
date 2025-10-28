@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.156",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.9.1",
     "aws-cdk-lib": "^2.221.0",
     "constructs": "^10.4.2",
@@ -30,7 +31,8 @@
     "@aws-sdk/client-scheduler": "^3.917.0",
     "@aws-sdk/client-secrets-manager": "^3.918.0",
     "@aws-sdk/client-sesv2": "^3.917.0",
-    "@aws-sdk/lib-dynamodb": "^3.917.0"
+    "@aws-sdk/lib-dynamodb": "^3.917.0",
+    "jsonwebtoken": "^9.0.2"
   },
   "lint-staged": {
     "*.{ts,js,json,md}": [
