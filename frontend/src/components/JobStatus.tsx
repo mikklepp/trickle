@@ -169,7 +169,7 @@ export default function JobStatus({
             )}
             <div className="stat stat-large">
               <label>Status</label>
-              <span>{jobData.status}</span>
+              <span className={`status-badge ${jobData.status}`}>{jobData.status}</span>
             </div>
             <div className="stat stat-large">
               <label>Total Recipients</label>
