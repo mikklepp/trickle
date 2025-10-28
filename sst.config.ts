@@ -12,10 +12,35 @@ export default $config({
     const aws = await import("@pulumi/aws");
     const pulumi = await import("@pulumi/pulumi");
 
-    // AWS Secrets Manager for sensitive credentials
+    // Get credentials from environment variables
+    // Usage: AUTH_USERNAME=user AUTH_PASSWORD=pass npm run deploy
+    const authUsername = process.env.AUTH_USERNAME;
+    const authPassword = process.env.AUTH_PASSWORD;
+    const authSecret = process.env.AUTH_SECRET || require("crypto").randomBytes(32).toString("hex");
+
+    if (!authUsername || !authPassword) {
+      throw new Error(
+        "AUTH_USERNAME and AUTH_PASSWORD environment variables are required. " +
+          "Set them before deploying: AUTH_USERNAME=user AUTH_PASSWORD=pass npm run deploy"
+      );
+    }
+
+    // Create AWS Secrets Manager secret with credentials
     const secretsManagerSecret = new aws.secretsmanager.Secret("TrickleSecrets", {
       name: `trickle/${$app.stage}/secrets`,
       description: `Trickle credentials for stage: ${$app.stage}`,
+    });
+
+    // Store the actual secret values
+    new aws.secretsmanager.SecretVersion("TrickleSecretsVersion", {
+      secretId: secretsManagerSecret.id,
+      secretString: pulumi
+        .output({
+          AuthUsername: authUsername,
+          AuthPassword: authPassword,
+          AuthSecret: authSecret,
+        })
+        .apply(JSON.stringify),
     });
 
     const isDev = $app.stage !== "production";
