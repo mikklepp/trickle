@@ -281,9 +281,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
 
     const duration = parts.join(" ");
     const completionTime = new Date(Date.now() + totalSeconds * 1000);
-    const completionTimeIso = completionTime.toISOString();
+    const completionTimeStr = completionTime.toLocaleString();
 
-    return { duration, completionTime: completionTimeIso };
+    return { duration, completionTime: completionTimeStr };
   }, [recipientCount, config.rateLimit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
