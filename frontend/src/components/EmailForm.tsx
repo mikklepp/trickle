@@ -352,42 +352,23 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     ...verifiedEmails,
   ].filter((email, index, self) => self.indexOf(email) === index);
 
-  const quotaPercentage = quota
-    ? Math.round(((quota.usableQuota - quota.available) / quota.usableQuota) * 100)
-    : 0;
-  const quotaColor =
-    quotaPercentage > 80 ? "red" : quotaPercentage > 50 ? "orange" : "green";
-
   return (
     <div className="email-form">
       <h2>Send Email</h2>
 
       {quota && (
-        <div
-          className="quota-info"
-          style={{
-            padding: "10px",
-            marginBottom: "15px",
-            border: `2px solid ${quotaColor}`,
-            borderRadius: "5px",
-            backgroundColor: `${quotaColor}11`,
-          }}
-        >
-          <strong>SES Quota:</strong> {quota.available} / {quota.usableQuota} emails available
-          (using 50% of {quota.max24HourSend} daily limit)
-          <br />
-          <small>
-            Sent today: {quota.sentLast24Hours} • Remaining: {quota.remaining}
-            {!quota.productionAccessEnabled && (
-              <>
-                {" "}
-                •{" "}
-                <strong style={{ color: "orange" }}>
-                  ⚠️ Sandbox mode - Production access not enabled
-                </strong>
-              </>
-            )}
-          </small>
+        <div className="quota-info">
+          Sent today: <strong>{quota.sentLast24Hours}</strong> • Remaining:{" "}
+          <strong>{quota.remaining}</strong>
+          {!quota.productionAccessEnabled && (
+            <>
+              {" "}
+              •{" "}
+              <span style={{ color: "orange" }}>
+                ⚠️ Sandbox mode
+              </span>
+            </>
+          )}
         </div>
       )}
 
