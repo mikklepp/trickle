@@ -5,7 +5,8 @@ import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SchedulerClient, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
 import { Resource } from "sst";
 
-const ses = new SESv2Client({ region: "eu-north-1" });
+// AWS SDK automatically detects the region from Lambda execution context
+const ses = new SESv2Client({});
 const s3 = new S3Client({});
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
