@@ -147,7 +147,12 @@ npm run deploy -- --stage staging
 npm run deploy -- --stage production
 ```
 
-Each stage creates its own Secrets Manager secret: `trickle/{stage}/secrets`
+Each stage creates its own Secrets Manager secret: `trickle-{stage}`
+
+Example secret names:
+- Development: `trickle-dev`
+- Staging: `trickle-staging`
+- Production: `trickle-production`
 
 ## Security Notes
 

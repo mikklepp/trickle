@@ -27,7 +27,7 @@ export default $config({
 
     // Create AWS Secrets Manager secret with credentials
     const secretsManagerSecret = new aws.secretsmanager.Secret("TrickleSecrets", {
-      name: `trickle/${$app.stage}/secrets`,
+      name: `trickle-${$app.stage}`,
       description: `Trickle credentials for stage: ${$app.stage}`,
     });
 
