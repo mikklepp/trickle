@@ -11,6 +11,10 @@ echo ""
 # Get stage (default to dev)
 STAGE="${1:-dev}"
 
+# Get AWS region (default to eu-west-1)
+AWS_REGION="${AWS_REGION:-eu-west-1}"
+REGION_FLAG="--region $AWS_REGION"
+
 # Validate AWS_PROFILE is set for AWS CLI
 if [ -z "$AWS_PROFILE" ]; then
   echo "Warning: AWS_PROFILE not set. Using default AWS profile."
@@ -21,7 +25,7 @@ else
   echo "Using AWS profile: $AWS_PROFILE"
 fi
 
-echo ""
+echo "Using AWS region: $AWS_REGION"
 echo "Stage: $STAGE"
 echo ""
 
@@ -86,13 +90,13 @@ echo "Creating/updating secret in AWS Secrets Manager..."
 SECRET_NAME="trickle/$STAGE/secrets"
 
 # Check if secret exists
-if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" $PROFILE_FLAG &>/dev/null; then
+if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" $REGION_FLAG $PROFILE_FLAG &>/dev/null; then
   # Update existing secret
   echo "Updating existing secret: $SECRET_NAME"
   aws secretsmanager update-secret \
     --secret-id "$SECRET_NAME" \
     --secret-string "$SECRET_JSON" \
-    $PROFILE_FLAG > /dev/null
+    $REGION_FLAG $PROFILE_FLAG > /dev/null
 else
   # Create new secret
   echo "Creating new secret: $SECRET_NAME"
@@ -100,7 +104,7 @@ else
     --name "$SECRET_NAME" \
     --description "Trickle credentials for stage: $STAGE" \
     --secret-string "$SECRET_JSON" \
-    $PROFILE_FLAG > /dev/null
+    $REGION_FLAG $PROFILE_FLAG > /dev/null
 fi
 
 echo ""
@@ -108,16 +112,21 @@ echo "✅ Secrets configured successfully in AWS Secrets Manager!"
 echo ""
 echo "Secret details:"
 echo "  Name: $SECRET_NAME"
-echo "  Region: $(aws configure get region $PROFILE_FLAG)"
+echo "  Region: $AWS_REGION"
 echo ""
 echo "To set secrets for other stages, run:"
 echo "  ./setup-secrets.sh dev"
 echo "  ./setup-secrets.sh staging"
 echo "  ./setup-secrets.sh production"
 echo ""
+echo "To use a different region, run:"
+echo "  AWS_REGION=us-east-1 ./setup-secrets.sh dev"
+echo "  AWS_REGION=eu-central-1 AWS_PROFILE=qed ./setup-secrets.sh production"
+echo ""
 echo "Security notes:"
 echo "  - Each stage has its own unique AUTH_SECRET"
 echo "  - Tokens from one stage will NOT work in another stage"
 echo "  - Secrets are encrypted at rest in AWS Secrets Manager"
 echo "  - Consider enabling secret rotation in production"
+echo "  - Region defaults to eu-west-1 if AWS_REGION is not set"
 echo ""
