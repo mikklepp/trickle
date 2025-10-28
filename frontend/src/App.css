@@ -316,16 +316,19 @@ button[type="submit"]:disabled {
 
 .stat label {
   display: block;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   color: #7f8c8d;
   margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .stat span {
   display: block;
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   font-weight: bold;
   color: #2c3e50;
+  word-break: break-word;
 }
 
 .stat span.success {
