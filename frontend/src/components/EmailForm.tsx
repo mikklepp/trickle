@@ -347,9 +347,10 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     );
   }
 
-  const allSuggestions = [...recentSenders, ...verifiedEmails].filter(
-    (email, index, self) => self.indexOf(email) === index
-  );
+  const allSuggestions = [
+    ...recentSenders.map((s) => s.email),
+    ...verifiedEmails,
+  ].filter((email, index, self) => self.indexOf(email) === index);
 
   const quotaPercentage = quota
     ? Math.round(((quota.usableQuota - quota.available) / quota.usableQuota) * 100)
