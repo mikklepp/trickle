@@ -239,6 +239,17 @@ async function sendEmail(message: EmailMessage) {
     }
   }
 
+  // Extract domain from sender email for headers
+  const senderEmail = message.sender.match(/<([^>]+)>/)?.[1] || message.sender;
+  const senderDomain = senderEmail.split("@")[1];
+
+  // Build standard headers for deliverability
+  const standardHeaders: Record<string, string> = {
+    "Message-ID": `<${message.jobId}-${Date.now()}@${senderDomain}>`,
+    "Return-Path": senderEmail,
+    "List-Unsubscribe": `<mailto:unsubscribe@${senderDomain}>`,
+  };
+
   // Send via SES v2 Simple content type
   const emailParams: any = {
     FromEmailAddress: message.sender,
@@ -262,12 +273,20 @@ async function sendEmail(message: EmailMessage) {
     },
   };
 
-  // Add custom headers
+  // Add standard headers (Message-ID, Return-Path, List-Unsubscribe)
+  emailParams.Content.Simple.Headers = Object.entries(standardHeaders).map(([name, value]) => ({
+    Name: name,
+    Value: value,
+  }));
+
+  // Add custom headers (can override standard headers)
   if (message.headers) {
-    emailParams.Content.Simple.Headers = Object.entries(message.headers).map(([name, value]) => ({
-      Name: name,
-      Value: value,
-    }));
+    emailParams.Content.Simple.Headers.push(
+      ...Object.entries(message.headers).map(([name, value]) => ({
+        Name: name,
+        Value: value,
+      }))
+    );
   }
 
   // Add attachments if present
