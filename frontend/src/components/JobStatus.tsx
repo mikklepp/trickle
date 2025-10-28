@@ -1,21 +1,13 @@
 import { useState, useEffect } from "react";
+import { format } from "date-fns";
 
 /**
- * Formats an ISO date string using the user's browser locale
- * Gets locale from navigator.language (e.g., 'fi-FI' for Finland)
- * Uses 24-hour time format (hour12: false)
+ * Formats an ISO date string as ISO 8601 with local timezone
+ * Example: 2025-10-28T14:12:12+02:00
  */
 function formatDate(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleString(navigator.language, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  return format(date, "yyyy-MM-dd'T'HH:mm:ssxxx");
 }
 
 interface JobStatusProps {
