@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 /**
  * Formats an ISO date string using the user's browser locale
  * Gets locale from navigator.language (e.g., 'fi-FI' for Finland)
+ * Uses 24-hour time format (hour12: false)
  */
 function formatDate(isoString: string): string {
   const date = new Date(isoString);
@@ -13,6 +14,7 @@ function formatDate(isoString: string): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
   });
 }
 

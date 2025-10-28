@@ -6,6 +6,7 @@ import "react-quill-new/dist/quill.snow.css";
 /**
  * Formats a Date object using the user's browser locale
  * Gets locale from navigator.language (e.g., 'fi-FI' for Finland)
+ * Uses 24-hour time format (hour12: false)
  */
 function formatDate(date: Date): string {
   return date.toLocaleString(navigator.language, {
@@ -15,6 +16,7 @@ function formatDate(date: Date): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
   });
 }
 
