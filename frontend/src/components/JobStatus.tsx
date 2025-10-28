@@ -3,11 +3,11 @@ import { format } from "date-fns";
 
 /**
  * Formats an ISO date string as ISO 8601 with local timezone
- * Example: 2025-10-28T14:12:12+02:00
+ * Example: 2025-10-28 14:12+02:00
  */
 function formatDate(isoString: string): string {
   const date = new Date(isoString);
-  return format(date, "yyyy-MM-dd'T'HH:mm:ssxxx");
+  return format(date, "yyyy-MM-dd HH:mmxxx");
 }
 
 interface JobStatusProps {

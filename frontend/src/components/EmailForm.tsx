@@ -6,10 +6,10 @@ import "react-quill-new/dist/quill.snow.css";
 
 /**
  * Formats a Date object as ISO 8601 with local timezone
- * Example: 2025-10-28T14:12:12+02:00
+ * Example: 2025-10-28 14:12+02:00
  */
 function formatDate(date: Date): string {
-  return format(date, "yyyy-MM-dd'T'HH:mm:ssxxx");
+  return format(date, "yyyy-MM-dd HH:mmxxx");
 }
 
 interface EmailFormProps {
