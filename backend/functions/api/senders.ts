@@ -1,7 +1,8 @@
 import { SESv2Client, ListEmailIdentitiesCommand } from "@aws-sdk/client-sesv2";
 import { verifyToken } from "./auth";
 
-const ses = new SESv2Client({ region: "eu-north-1" });
+// AWS SDK automatically detects the region from Lambda execution context
+const ses = new SESv2Client({});
 
 export async function list(event: any) {
   try {

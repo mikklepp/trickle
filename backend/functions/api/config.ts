@@ -6,7 +6,8 @@ import { verifyToken } from "./auth";
 
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
-const ses = new SESv2Client({ region: "eu-north-1" });
+// AWS SDK automatically detects the region from Lambda execution context
+const ses = new SESv2Client({});
 
 export async function get(event: any) {
   try {
