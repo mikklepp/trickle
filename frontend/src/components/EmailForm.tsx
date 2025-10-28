@@ -3,6 +3,21 @@ import ReactQuill from "react-quill-new";
 import imageCompression from "browser-image-compression";
 import "react-quill-new/dist/quill.snow.css";
 
+/**
+ * Formats a Date object using the user's browser locale
+ * Gets locale from navigator.language (e.g., 'fi-FI' for Finland)
+ */
+function formatDate(date: Date): string {
+  return date.toLocaleString(navigator.language, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 interface EmailFormProps {
   apiUrl: string;
   token: string;
@@ -281,7 +296,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
 
     const duration = parts.join(" ");
     const completionTime = new Date(Date.now() + totalSeconds * 1000);
-    const completionTimeStr = completionTime.toLocaleString();
+    const completionTimeStr = formatDate(completionTime);
 
     return { duration, completionTime: completionTimeStr };
   }, [recipientCount, config.rateLimit]);

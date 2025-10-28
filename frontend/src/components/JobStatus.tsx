@@ -1,5 +1,21 @@
 import { useState, useEffect } from "react";
 
+/**
+ * Formats an ISO date string using the user's browser locale
+ * Gets locale from navigator.language (e.g., 'fi-FI' for Finland)
+ */
+function formatDate(isoString: string): string {
+  const date = new Date(isoString);
+  return date.toLocaleString(navigator.language, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 interface JobStatusProps {
   apiUrl: string;
   token: string;
@@ -175,12 +191,12 @@ export default function JobStatus({
             </div>
             <div className="stat">
               <label>Created At</label>
-              <span>{new Date(jobData.createdAt).toLocaleString()}</span>
+              <span>{formatDate(jobData.createdAt)}</span>
             </div>
             {jobData.completedAt && (
               <div className="stat">
                 <label>Completed At</label>
-                <span>{new Date(jobData.completedAt).toLocaleString()}</span>
+                <span>{formatDate(jobData.completedAt)}</span>
               </div>
             )}
           </div>
@@ -200,7 +216,7 @@ export default function JobStatus({
                 </p>
                 {jobData.lastErrorAt && (
                   <p>
-                    <strong>Time:</strong> {new Date(jobData.lastErrorAt).toLocaleString()}
+                    <strong>Time:</strong> {formatDate(jobData.lastErrorAt)}
                   </p>
                 )}
               </div>
@@ -251,7 +267,7 @@ export default function JobStatus({
                     {job.sent}/{job.totalRecipients}
                     {job.failed > 0 && <span className="error"> ({job.failed} failed)</span>}
                   </td>
-                  <td>{new Date(job.createdAt).toLocaleString()}</td>
+                  <td>{formatDate(job.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
