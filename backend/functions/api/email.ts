@@ -92,7 +92,7 @@ export async function send(event: any, context: any) {
   try {
     // Verify authentication
     const token = event.headers?.authorization?.replace("Bearer ", "");
-    const auth = verifyToken(token);
+    const auth = await verifyToken(token);
     if (!auth) {
       return {
         statusCode: 401,
@@ -403,7 +403,7 @@ export async function status(event: any) {
   try {
     // Verify authentication
     const token = event.headers?.authorization?.replace("Bearer ", "");
-    const auth = verifyToken(token);
+    const auth = await verifyToken(token);
     if (!auth) {
       return {
         statusCode: 401,
@@ -464,7 +464,7 @@ export async function list(event: any) {
   try {
     // Verify authentication
     const token = event.headers?.authorization?.replace("Bearer ", "");
-    const auth = verifyToken(token);
+    const auth = await verifyToken(token);
     if (!auth) {
       return {
         statusCode: 401,

@@ -12,7 +12,7 @@ export async function get(event: any) {
   try {
     // Verify authentication
     const token = event.headers?.authorization?.replace("Bearer ", "");
-    const auth = verifyToken(token);
+    const auth = await verifyToken(token);
     if (!auth) {
       return {
         statusCode: 401,
@@ -56,7 +56,7 @@ export async function update(event: any) {
   try {
     // Verify authentication
     const token = event.headers?.authorization?.replace("Bearer ", "");
-    const auth = verifyToken(token);
+    const auth = await verifyToken(token);
     if (!auth) {
       return {
         statusCode: 401,

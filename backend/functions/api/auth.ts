@@ -35,8 +35,13 @@ export function createToken(username: string, userId: string): string {
   return `${Buffer.from(payload).toString("base64")}.${signature}`;
 }
 
-export function verifyToken(token: string): { username: string; userId: string } | null {
+export async function verifyToken(
+  token: string
+): Promise<{ username: string; userId: string } | null> {
   try {
+    // Ensure secrets are initialized
+    await initializeSecrets();
+
     const [payloadB64, signature] = token.split(".");
     if (!payloadB64 || !signature) return null;
 

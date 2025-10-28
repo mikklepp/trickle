@@ -7,7 +7,7 @@ export async function quota(event: any) {
   try {
     // Verify authentication
     const token = event.headers?.authorization?.replace("Bearer ", "");
-    const auth = verifyToken(token);
+    const auth = await verifyToken(token);
     if (!auth) {
       return {
         statusCode: 401,
