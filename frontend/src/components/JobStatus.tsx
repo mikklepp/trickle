@@ -175,12 +175,12 @@ export default function JobStatus({
             </div>
             <div className="stat">
               <label>Created At</label>
-              <span>{new Date(jobData.createdAt).toLocaleString()}</span>
+              <span>{jobData.createdAt}</span>
             </div>
             {jobData.completedAt && (
               <div className="stat">
                 <label>Completed At</label>
-                <span>{new Date(jobData.completedAt).toLocaleString()}</span>
+                <span>{jobData.completedAt}</span>
               </div>
             )}
           </div>
@@ -200,7 +200,7 @@ export default function JobStatus({
                 </p>
                 {jobData.lastErrorAt && (
                   <p>
-                    <strong>Time:</strong> {new Date(jobData.lastErrorAt).toLocaleString()}
+                    <strong>Time:</strong> {jobData.lastErrorAt}
                   </p>
                 )}
               </div>
@@ -251,7 +251,7 @@ export default function JobStatus({
                     {job.sent}/{job.totalRecipients}
                     {job.failed > 0 && <span className="error"> ({job.failed} failed)</span>}
                   </td>
-                  <td>{new Date(job.createdAt).toLocaleString()}</td>
+                  <td>{job.createdAt}</td>
                 </tr>
               ))}
             </tbody>
