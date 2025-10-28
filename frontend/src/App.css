@@ -337,6 +337,7 @@ button[type="submit"]:disabled {
 
 .stat-large span {
   font-size: 1.5rem;
+  padding: 0.4rem 1rem;
 }
 
 .stat span.success {
@@ -446,7 +447,6 @@ button[type="submit"]:disabled {
 
 .stat-large span.status-badge {
   font-size: 1rem;
-  padding: 0.4rem 1rem;
 }
 
 .status-badge.pending {
