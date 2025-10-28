@@ -47,11 +47,17 @@ const ALLOWED_FILE_TYPES = {
   "image/webp": ".webp",
 };
 
+interface RecentSender {
+  email: string;
+  name?: string;
+}
+
 export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
-  const [recentSenders, setRecentSenders] = useState<string[]>([]);
+  const [recentSenders, setRecentSenders] = useState<RecentSender[]>([]);
   const [sender, setSender] = useState("");
+  const [senderName, setSenderName] = useState("");
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
@@ -71,16 +77,33 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const loadRecentSenders = () => {
     const recent = localStorage.getItem("recentSenders");
     if (recent) {
-      const senders = JSON.parse(recent) as string[];
-      setRecentSenders(senders);
-      if (senders.length > 0 && !sender) {
-        setSender(senders[0]);
+      try {
+        const parsed = JSON.parse(recent);
+        // Handle backward compatibility: convert old string[] format to new RecentSender[] format
+        const senders: RecentSender[] = Array.isArray(parsed)
+          ? parsed.map((item) =>
+              typeof item === "string" ? { email: item } : item
+            )
+          : [];
+        setRecentSenders(senders);
+        if (senders.length > 0 && !sender) {
+          setSender(senders[0].email);
+          if (senders[0].name) {
+            setSenderName(senders[0].name);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to parse recent senders:", err);
       }
     }
   };
 
-  const saveRecentSender = (email: string) => {
-    const recent = [email, ...recentSenders.filter((s) => s !== email)].slice(0, 5);
+  const saveRecentSender = (email: string, name: string = "") => {
+    const newSender: RecentSender = { email, name: name || undefined };
+    const recent = [
+      newSender,
+      ...recentSenders.filter((s) => s.email !== email),
+    ].slice(0, 5);
     setRecentSenders(recent);
     localStorage.setItem("recentSenders", JSON.stringify(recent));
     console.log("Saved recent senders:", recent);
@@ -268,6 +291,11 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     setLoading(true);
 
     try {
+      // Format sender as RFC 5322: "Name" <email@example.com> or just email@example.com
+      const formattedSender = senderName.trim()
+        ? `"${senderName}" <${sender}>`
+        : sender;
+
       const response = await fetch(`${apiUrl}/email/send`, {
         method: "POST",
         headers: {
@@ -275,7 +303,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          sender,
+          sender: formattedSender,
           recipients,
           subject,
           content,
@@ -291,9 +319,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       const data = await response.json();
 
       if (response.ok) {
-        saveRecentSender(sender);
+        saveRecentSender(sender, senderName);
         onJobCreated(data.jobId);
-        // Reset form
+        // Reset form (but keep sender and senderName for convenience)
         setRecipients("");
         setSubject("");
         setContent("");
@@ -384,14 +412,17 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
           </datalist>
           {recentSenders.length > 0 && (
             <div className="recent-senders">
-              {recentSenders.map((email) => (
+              {recentSenders.map((recentSender) => (
                 <button
-                  key={email}
+                  key={recentSender.email}
                   type="button"
                   className="sender-chip"
-                  onClick={() => setSender(email)}
+                  onClick={() => {
+                    setSender(recentSender.email);
+                    setSenderName(recentSender.name || "");
+                  }}
                 >
-                  {email}
+                  {recentSender.name ? `${recentSender.name} <${recentSender.email}>` : recentSender.email}
                 </button>
               ))}
             </div>
@@ -408,6 +439,22 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
                 ✓ Verified emails: <strong>{verifiedEmails.join(", ")}</strong>
               </>
             )}
+          </small>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="senderName">Sender Name (optional)</label>
+          <input
+            id="senderName"
+            type="text"
+            value={senderName}
+            onChange={(e) => setSenderName(e.target.value)}
+            placeholder="e.g., John Doe or Support Team"
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+          <small>
+            How the sender name will appear in recipients' inboxes
           </small>
         </div>
 
