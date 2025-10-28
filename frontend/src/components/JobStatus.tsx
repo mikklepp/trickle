@@ -151,44 +151,44 @@ export default function JobStatus({
       {jobData && (
         <div className="job-details">
           <div className="stats">
-            <div className="stat">
+            <div className="stat stat-small">
               <label>Job ID</label>
               <span>{jobData.jobId}</span>
             </div>
             {jobData.sender && (
-              <div className="stat">
+              <div className="stat stat-small">
                 <label>Sender</label>
                 <span>{jobData.sender}</span>
               </div>
             )}
             {jobData.subject && (
-              <div className="stat">
+              <div className="stat stat-small">
                 <label>Subject</label>
                 <span>{jobData.subject}</span>
               </div>
             )}
-            <div className="stat">
+            <div className="stat stat-large">
               <label>Status</label>
               <span>{jobData.status}</span>
             </div>
-            <div className="stat">
+            <div className="stat stat-large">
               <label>Total Recipients</label>
               <span>{jobData.totalRecipients}</span>
             </div>
-            <div className="stat">
+            <div className="stat stat-large">
               <label>Sent</label>
               <span className="success">{jobData.sent}</span>
             </div>
-            <div className="stat">
+            <div className="stat stat-large">
               <label>Failed</label>
               <span className="error">{jobData.failed}</span>
             </div>
-            <div className="stat">
+            <div className="stat stat-large">
               <label>Created At</label>
               <span>{formatDate(jobData.createdAt)}</span>
             </div>
             {jobData.completedAt && (
-              <div className="stat">
+              <div className="stat stat-large">
                 <label>Completed At</label>
                 <span>{formatDate(jobData.completedAt)}</span>
               </div>

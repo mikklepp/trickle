@@ -331,6 +331,14 @@ button[type="submit"]:disabled {
   word-break: break-word;
 }
 
+.stat-small span {
+  font-size: 0.9rem;
+}
+
+.stat-large span {
+  font-size: 1.5rem;
+}
+
 .stat span.success {
   color: #27ae60;
 }
