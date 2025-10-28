@@ -10,11 +10,14 @@ export default $config({
   },
   async run() {
     const aws = await import("@pulumi/aws");
+    const pulumi = await import("@pulumi/pulumi");
 
-    // Secrets
-    const authUsername = new sst.Secret("AuthUsername");
-    const authPassword = new sst.Secret("AuthPassword");
-    const authSecret = new sst.Secret("AuthSecret");
+    // AWS Secrets Manager for sensitive credentials
+    const secretsManagerSecret = new aws.secretsmanager.Secret("TrickleSecrets", {
+      name: `trickle/${$app.stage}/secrets`,
+      description: `Trickle credentials for stage: ${$app.stage}`,
+    });
+
     const isDev = $app.stage !== "production";
 
     // Dead Letter Queue for failed email processing
@@ -151,17 +154,10 @@ export default $config({
       transform: {
         route: {
           handler: {
-            link: [
-              attachmentsBucket,
-              jobsTable,
-              configTable,
-              worker,
-              authUsername,
-              authPassword,
-              authSecret,
-            ],
+            link: [attachmentsBucket, jobsTable, configTable, worker],
             environment: {
               SCHEDULER_ROLE_ARN: schedulerRole.arn,
+              SECRETS_MANAGER_SECRET_ID: secretsManagerSecret.id,
             },
             permissions: [
               {
@@ -169,6 +165,7 @@ export default $config({
                   "ses:ListIdentities",
                   "ses:GetIdentityVerificationAttributes",
                   "ses:ListEmailIdentities",
+                  "ses:GetAccount",
                 ],
                 resources: ["*"],
               },
@@ -179,6 +176,10 @@ export default $config({
               {
                 actions: ["iam:PassRole"],
                 resources: ["*"],
+              },
+              {
+                actions: ["secretsmanager:GetSecretValue"],
+                resources: [secretsManagerSecret.arn],
               },
             ],
           },

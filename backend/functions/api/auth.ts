@@ -1,12 +1,37 @@
 import { createHmac } from "crypto";
-import { Resource } from "sst";
+import { getSecrets } from "../shared/secrets";
 
-const SECRET = Resource.AuthSecret.value;
+let authSecret: string;
+let validUsername: string;
+let validPassword: string;
+let secretsInitialized = false;
+
+// Initialize secrets on first use
+async function initializeSecrets() {
+  if (secretsInitialized) return;
+
+  const secrets = await getSecrets();
+  authSecret = secrets.AuthSecret;
+  validUsername = secrets.AuthUsername;
+  validPassword = secrets.AuthPassword;
+  secretsInitialized = true;
+
+  // Validate secrets
+  if (!authSecret || authSecret.length < 32) {
+    throw new Error("AUTH_SECRET is not properly configured");
+  }
+  if (!validUsername) {
+    throw new Error("AUTH_USERNAME is not properly configured");
+  }
+  if (!validPassword) {
+    throw new Error("AUTH_PASSWORD is not properly configured");
+  }
+}
 
 export function createToken(username: string, userId: string): string {
   const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   const payload = `${username}:${userId}:${expiresAt}`;
-  const signature = createHmac("sha256", SECRET).update(payload).digest("hex");
+  const signature = createHmac("sha256", authSecret).update(payload).digest("hex");
   return `${Buffer.from(payload).toString("base64")}.${signature}`;
 }
 
@@ -16,7 +41,7 @@ export function verifyToken(token: string): { username: string; userId: string }
     if (!payloadB64 || !signature) return null;
 
     const payload = Buffer.from(payloadB64, "base64").toString("utf8");
-    const expectedSignature = createHmac("sha256", SECRET).update(payload).digest("hex");
+    const expectedSignature = createHmac("sha256", authSecret).update(payload).digest("hex");
 
     if (signature !== expectedSignature) return null;
 
@@ -33,11 +58,14 @@ export function verifyToken(token: string): { username: string; userId: string }
 
 export async function login(event: any) {
   try {
+    // Initialize secrets on first request
+    await initializeSecrets();
+
     const body = JSON.parse(event.body || "{}");
     const { username, password } = body;
 
-    const VALID_USERNAME = Resource.AuthUsername.value;
-    const VALID_PASSWORD = Resource.AuthPassword.value;
+    const VALID_USERNAME = validUsername;
+    const VALID_PASSWORD = validPassword;
 
     // Simple auth (replace with proper auth in production)
     // TODO: Integrate with Cognito or proper auth provider
