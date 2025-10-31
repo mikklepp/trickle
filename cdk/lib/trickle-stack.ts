@@ -233,27 +233,25 @@ export class TrickleStack extends cdk.Stack {
       environment: apiEnvironment,
     });
 
+    // Helper to grant auth parameter store access
+    const grantAuthParameterAccess = (fn: lambda.Function) => {
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["ssm:GetParametersByPath"],
+          resources: [
+            `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+          ],
+        })
+      );
+    };
+
     // Grant specialized permissions to each API function based on actual needs
 
     // authLoginFunction - only needs auth secrets
-    authLoginFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(authLoginFunction);
 
     // sendersListFunction - needs Parameter Store + SES read-only
-    sendersListFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(sendersListFunction);
     sendersListFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["ses:ListEmailIdentities", "ses:GetAccount"],
@@ -262,14 +260,7 @@ export class TrickleStack extends cdk.Stack {
     );
 
     // accountQuotaFunction - needs Parameter Store + SES read-only
-    accountQuotaFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(accountQuotaFunction);
     accountQuotaFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["ses:GetAccount"],
@@ -278,58 +269,23 @@ export class TrickleStack extends cdk.Stack {
     );
 
     // emailListFunction - needs Parameter Store + jobs table read-only
-    emailListFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(emailListFunction);
     jobsTable.grantReadData(emailListFunction);
 
     // emailStatusFunction - needs Parameter Store + jobs table read-only
-    emailStatusFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(emailStatusFunction);
     jobsTable.grantReadData(emailStatusFunction);
 
     // configGetFunction - needs Parameter Store + config table read-only
-    configGetFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(configGetFunction);
     configTable.grantReadData(configGetFunction);
 
     // configUpdateFunction - needs Parameter Store + config table read/write
-    configUpdateFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(configUpdateFunction);
     configTable.grantReadWriteData(configUpdateFunction);
 
     // emailSendFunction - needs full permissions (Parameter Store, jobs, config, S3, SES, Scheduler, IAM)
-    emailSendFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ssm:GetParametersByPath"],
-        resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-        ],
-      })
-    );
+    grantAuthParameterAccess(emailSendFunction);
     jobsTable.grantReadWriteData(emailSendFunction);
     configTable.grantReadData(emailSendFunction);
     attachmentsBucket.grantReadWrite(emailSendFunction);
