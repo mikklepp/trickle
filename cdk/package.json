@@ -8,9 +8,9 @@
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
     "cdk": "cdk",
-    "diff": "cdk diff",
-    "deploy": "cdk deploy",
-    "destroy": "cdk destroy",
+    "diff": "cdk diff --all",
+    "deploy": "cdk deploy --all",
+    "destroy": "cdk destroy --all",
     "synth": "cdk synth"
   },
   "devDependencies": {
