@@ -108,8 +108,8 @@ export class TrickleStack extends cdk.Stack {
     const workerFunction = new lambda.Function(this, "EmailWorker", {
       functionName: `trickle-email-worker-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset("../backend/dist/worker"),
+      handler: "worker/index.handler",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.minutes(2),
       deadLetterQueue: emailDLQ,
       environment: {
@@ -164,8 +164,8 @@ export class TrickleStack extends cdk.Stack {
     const authLoginFunction = new lambda.Function(this, "AuthLogin", {
       functionName: `trickle-auth-login-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "auth.login",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/auth.login",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -173,8 +173,8 @@ export class TrickleStack extends cdk.Stack {
     const sendersListFunction = new lambda.Function(this, "SendersList", {
       functionName: `trickle-senders-list-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "senders.list",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/senders.list",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -182,8 +182,8 @@ export class TrickleStack extends cdk.Stack {
     const emailSendFunction = new lambda.Function(this, "EmailSend", {
       functionName: `trickle-email-send-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "email.send",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/email.send",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -191,8 +191,8 @@ export class TrickleStack extends cdk.Stack {
     const emailListFunction = new lambda.Function(this, "EmailList", {
       functionName: `trickle-email-list-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "email.list",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/email.list",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -200,8 +200,8 @@ export class TrickleStack extends cdk.Stack {
     const emailStatusFunction = new lambda.Function(this, "EmailStatus", {
       functionName: `trickle-email-status-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "email.status",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/email.status",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -209,8 +209,8 @@ export class TrickleStack extends cdk.Stack {
     const configGetFunction = new lambda.Function(this, "ConfigGet", {
       functionName: `trickle-config-get-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "config.get",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/config.get",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -218,8 +218,8 @@ export class TrickleStack extends cdk.Stack {
     const configUpdateFunction = new lambda.Function(this, "ConfigUpdate", {
       functionName: `trickle-config-update-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "config.update",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/config.update",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -227,8 +227,8 @@ export class TrickleStack extends cdk.Stack {
     const accountQuotaFunction = new lambda.Function(this, "AccountQuota", {
       functionName: `trickle-account-quota-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "account.quota",
-      code: lambda.Code.fromAsset("../backend/dist/api"),
+      handler: "api/account.quota",
+      code: lambda.Code.fromAsset("../backend/dist"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
