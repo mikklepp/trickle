@@ -233,53 +233,124 @@ export class TrickleStack extends cdk.Stack {
       environment: apiEnvironment,
     });
 
-    // Grant permissions to all API functions
-    const apiFunctions = [
-      authLoginFunction,
-      sendersListFunction,
-      emailSendFunction,
-      emailListFunction,
-      emailStatusFunction,
-      configGetFunction,
-      configUpdateFunction,
-      accountQuotaFunction,
-    ];
+    // Grant specialized permissions to each API function based on actual needs
 
-    apiFunctions.forEach((fn) => {
-      jobsTable.grantReadWriteData(fn);
-      configTable.grantReadWriteData(fn);
-      attachmentsBucket.grantReadWrite(fn);
+    // authLoginFunction - only needs auth secrets
+    authLoginFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
 
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["ses:ListEmailIdentities", "ses:GetAccount"],
-          resources: ["*"],
-        })
-      );
+    // sendersListFunction - needs Parameter Store + SES read-only
+    sendersListFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    sendersListFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:ListEmailIdentities", "ses:GetAccount"],
+        resources: ["*"],
+      })
+    );
 
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["scheduler:CreateSchedule", "scheduler:GetSchedule"],
-          resources: ["*"],
-        })
-      );
+    // accountQuotaFunction - needs Parameter Store + SES read-only
+    accountQuotaFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    accountQuotaFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:GetAccount"],
+        resources: ["*"],
+      })
+    );
 
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["iam:PassRole"],
-          resources: [schedulerRole.roleArn],
-        })
-      );
+    // emailListFunction - needs Parameter Store + jobs table read-only
+    emailListFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    jobsTable.grantReadData(emailListFunction);
 
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["ssm:GetParametersByPath"],
-          resources: [
-            `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
-          ],
-        })
-      );
-    });
+    // emailStatusFunction - needs Parameter Store + jobs table read-only
+    emailStatusFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    jobsTable.grantReadData(emailStatusFunction);
+
+    // configGetFunction - needs Parameter Store + config table read-only
+    configGetFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    configTable.grantReadData(configGetFunction);
+
+    // configUpdateFunction - needs Parameter Store + config table read/write
+    configUpdateFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    configTable.grantReadWriteData(configUpdateFunction);
+
+    // emailSendFunction - needs full permissions (Parameter Store, jobs, config, S3, SES, Scheduler, IAM)
+    emailSendFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParametersByPath"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
+        ],
+      })
+    );
+    jobsTable.grantReadWriteData(emailSendFunction);
+    configTable.grantReadData(emailSendFunction);
+    attachmentsBucket.grantReadWrite(emailSendFunction);
+    emailSendFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:ListEmailIdentities", "ses:GetAccount"],
+        resources: ["*"],
+      })
+    );
+    emailSendFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["scheduler:CreateSchedule", "scheduler:GetSchedule"],
+        resources: ["*"],
+      })
+    );
+    emailSendFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["iam:PassRole"],
+        resources: [schedulerRole.roleArn],
+      })
+    );
 
     // ========== Route53 & ACM ==========
 
