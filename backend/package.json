@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc && cp -r ../node_modules dist/"
+    "build": "tsc && cp package.json package-lock.json dist/ && npm install --production --prefix dist/"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.917.0",
