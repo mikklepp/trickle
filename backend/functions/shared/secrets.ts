@@ -12,7 +12,7 @@ let cachedSecrets: Credentials | null = null;
 let cacheExpiresAt: number = 0;
 
 /**
- * Fetch credentials from AWS Secrets Manager with caching
+ * Fetch credentials from AWS Systems Manager Parameter Store with caching
  * Cache is valid for 1 hour to reduce API calls
  */
 export async function getSecrets(): Promise<Credentials> {
@@ -39,22 +39,30 @@ export async function getSecrets(): Promise<Credentials> {
       throw new Error("Parameter path does not contain Parameters");
     }
 
-    cachedSecrets.AuthUsername = response.Parameters.find(
+    const usernameParam = response.Parameters.find(
       (p) => p.Name === `${authParameterPath}/username`
-    )!.Value;
-    cachedSecrets.AuthPassword = response.Parameters.find(
+    );
+    const passwordParam = response.Parameters.find(
       (p) => p.Name === `${authParameterPath}/password`
-    )!.Value;
-    cachedSecrets.AuthSecret = response.Parameters.find(
-      (p) => p.Name === `${authParameterPath}/secret`
-    )!.Value;
+    );
+    const secretParam = response.Parameters.find((p) => p.Name === `${authParameterPath}/secret`);
+
+    if (!usernameParam?.Value || !passwordParam?.Value || !secretParam?.Value) {
+      throw new Error("Missing required auth parameters in Parameter Store");
+    }
+
+    cachedSecrets = {
+      AuthUsername: usernameParam.Value,
+      AuthPassword: passwordParam.Value,
+      AuthSecret: secretParam.Value,
+    };
 
     // Cache for 1 hour
     cacheExpiresAt = now + 60 * 60 * 1000;
 
     return cachedSecrets;
   } catch (error) {
-    console.error("Failed to retrieve secrets from Secrets Manager:", error);
-    throw new Error("Failed to retrieve credentials from Secrets Manager");
+    console.error("Failed to retrieve secrets from Parameter Store:", error);
+    throw new Error("Failed to retrieve credentials from Parameter Store");
   }
 }
