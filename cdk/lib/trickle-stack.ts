@@ -109,7 +109,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-email-worker-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.handler",
-      code: lambda.Code.fromAsset("../backend/functions/worker"),
+      code: lambda.Code.fromAsset("../backend/dist/worker"),
       timeout: cdk.Duration.minutes(2),
       deadLetterQueue: emailDLQ,
       environment: {
@@ -165,7 +165,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-auth-login-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "auth.login",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -174,7 +174,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-senders-list-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "senders.list",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -183,7 +183,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-email-send-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "email.send",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -192,7 +192,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-email-list-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "email.list",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -201,7 +201,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-email-status-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "email.status",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -210,7 +210,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-config-get-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "config.get",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -219,7 +219,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-config-update-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "config.update",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -228,7 +228,7 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-account-quota-${stage}`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "account.quota",
-      code: lambda.Code.fromAsset("../backend/functions/api"),
+      code: lambda.Code.fromAsset("../backend/dist/api"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
