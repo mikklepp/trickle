@@ -125,7 +125,7 @@ export class TrickleStack extends cdk.Stack {
 
     workerFunction.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["sesv2:SendEmail"],
+        actions: ["sesv2:SendEmail", "ses:SendEmail"],
         resources: ["*"],
       })
     );
