@@ -1,0 +1,7 @@
+{
+  "app": "npx ts-node --require dotenv/config --prefer-ts-exts bin/trickle.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["node_modules", "cdk*.json", "**/*.d.ts", "**/*.js"]
+  }
+}
