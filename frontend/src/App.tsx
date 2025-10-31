@@ -4,8 +4,9 @@ import Login from "./components/Login";
 import EmailForm from "./components/EmailForm";
 import JobStatus from "./components/JobStatus";
 import Config from "./components/Config";
+import { getApiUrl } from "./utils/getApiUrl";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const API_URL = getApiUrl();
 
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
