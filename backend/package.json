@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc && cp package.json package-lock.json dist/ && npm install --omit=dev --prefix dist/"
+    "build": "tsc && cp package.json package-lock.json dist/ && npm install --omit=dev --prefix dist/ && touch -m dist/api dist/worker"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.917.0",
