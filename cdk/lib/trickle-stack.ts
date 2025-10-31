@@ -36,17 +36,17 @@ export class TrickleStack extends cdk.Stack {
     const authParameterPath = `/app/trickle/${stage}/auth`;
 
     // ========== Parameter Store ==========
-    const authUsernameParameter = new ssm.StringParameter(this, "AuthUsernameParameter", {
+    new ssm.StringParameter(this, "AuthUsernameParameter", {
       parameterName: `${authParameterPath}/username`,
       stringValue: authUsername,
     });
 
-    const authPasswordParameter = new ssm.StringParameter(this, "AuthPasswordParameter", {
+    new ssm.StringParameter(this, "AuthPasswordParameter", {
       parameterName: `${authParameterPath}/password`,
       stringValue: authPassword,
     });
 
-    const authSecretParameter = new ssm.StringParameter(this, "AuthSecretParameter", {
+    new ssm.StringParameter(this, "AuthSecretParameter", {
       parameterName: `${authParameterPath}/secret`,
       stringValue: authSecret,
     });
@@ -249,9 +249,6 @@ export class TrickleStack extends cdk.Stack {
       jobsTable.grantReadWriteData(fn);
       configTable.grantReadWriteData(fn);
       attachmentsBucket.grantReadWrite(fn);
-      authUsernameParameter.grantRead(fn);
-      authPasswordParameter.grantRead(fn);
-      authSecretParameter.grantRead(fn);
 
       fn.addToRolePolicy(
         new iam.PolicyStatement({
@@ -271,6 +268,15 @@ export class TrickleStack extends cdk.Stack {
         new iam.PolicyStatement({
           actions: ["iam:PassRole"],
           resources: [schedulerRole.roleArn],
+        })
+      );
+
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["ssm:GetParametersByPath"],
+          resources: [
+            `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth/*`,
+          ],
         })
       );
     });
