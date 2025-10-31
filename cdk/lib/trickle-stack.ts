@@ -6,7 +6,7 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
@@ -20,6 +20,7 @@ export interface TrickleStackProps extends cdk.StackProps {
   authUsername: string;
   authPassword: string;
   authSecret: string;
+  frontendCertificateArn: string;
 }
 
 export class TrickleStack extends cdk.Stack {
@@ -32,16 +33,22 @@ export class TrickleStack extends cdk.Stack {
     // Domain names
     const frontendDomain = isProduction ? "trickle.qed.fi" : `${stage}.trickle.qed.fi`;
     const apiDomain = isProduction ? "api.trickle.qed.fi" : `api.${stage}.trickle.qed.fi`;
+    const authParameterPath = `/app/trickle/${stage}/auth`;
 
-    // ========== Secrets Manager ==========
-    const secret = new secretsmanager.Secret(this, "TrickleSecrets", {
-      secretName: `trickle-${stage}`,
-      description: `Trickle credentials for stage: ${stage}`,
-      secretObjectValue: {
-        AuthUsername: cdk.SecretValue.unsafePlainText(authUsername),
-        AuthPassword: cdk.SecretValue.unsafePlainText(authPassword),
-        AuthSecret: cdk.SecretValue.unsafePlainText(authSecret),
-      },
+    // ========== Parameter Store ==========
+    const authUsernameParameter = new ssm.StringParameter(this, "AuthUsernameParameter", {
+      parameterName: `${authParameterPath}/username`,
+      stringValue: authUsername,
+    });
+
+    const authPasswordParameter = new ssm.StringParameter(this, "AuthPasswordParameter", {
+      parameterName: `${authParameterPath}/password`,
+      stringValue: authPassword,
+    });
+
+    const authSecretParameter = new ssm.StringParameter(this, "AuthSecretParameter", {
+      parameterName: `${authParameterPath}/secret`,
+      stringValue: authSecret,
     });
 
     // ========== S3 Bucket for Attachments ==========
@@ -118,7 +125,7 @@ export class TrickleStack extends cdk.Stack {
 
     workerFunction.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["ses:SendEmail", "sesv2:SendEmail"],
+        actions: ["sesv2:SendEmail"],
         resources: ["*"],
       })
     );
@@ -150,7 +157,7 @@ export class TrickleStack extends cdk.Stack {
       ATTACHMENTS_BUCKET_NAME: attachmentsBucket.bucketName,
       WORKER_FUNCTION_ARN: workerFunction.functionArn,
       SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
-      SECRETS_MANAGER_SECRET_ID: secret.secretName,
+      AUTH_PARAMETER_PATH: authParameterPath,
     };
 
     // API Lambda functions
@@ -242,7 +249,9 @@ export class TrickleStack extends cdk.Stack {
       jobsTable.grantReadWriteData(fn);
       configTable.grantReadWriteData(fn);
       attachmentsBucket.grantReadWrite(fn);
-      secret.grantRead(fn);
+      authUsernameParameter.grantRead(fn);
+      authPasswordParameter.grantRead(fn);
+      authSecretParameter.grantRead(fn);
 
       fn.addToRolePolicy(
         new iam.PolicyStatement({
@@ -284,13 +293,12 @@ export class TrickleStack extends cdk.Stack {
       validation: acm.CertificateValidation.fromDns(hostedZone),
     });
 
-    // SSL Certificate for CloudFront (must be in us-east-1)
-    // Note: CloudFront requires certificates in us-east-1 region
-    // You may need to create this certificate manually in us-east-1 and reference it here
-    const frontendCertificate = new acm.Certificate(this, "FrontendCertificate", {
-      domainName: frontendDomain,
-      validation: acm.CertificateValidation.fromDns(hostedZone),
-    });
+    // SSL Certificate for CloudFront (imported from us-east-1 certificate stack)
+    const frontendCertificate = acm.Certificate.fromCertificateArn(
+      this,
+      "FrontendCertificate",
+      props.frontendCertificateArn
+    );
 
     // ========== API Gateway v2 ==========
 

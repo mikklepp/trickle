@@ -1,6 +1,6 @@
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 
-const client = new SecretsManagerClient({});
+const client = new SSMClient({});
 
 interface Credentials {
   AuthUsername: string;
@@ -23,23 +23,31 @@ export async function getSecrets(): Promise<Credentials> {
     return cachedSecrets;
   }
 
-  const secretId = process.env.SECRETS_MANAGER_SECRET_ID;
-  if (!secretId) {
-    throw new Error("SECRETS_MANAGER_SECRET_ID environment variable is not set");
+  const authParameterPath = process.env.AUTH_PARAMETER_PATH;
+  if (!authParameterPath) {
+    throw new Error("AUTH_PARAMETER_PATH environment variable is not set");
   }
 
   try {
-    const command = new GetSecretValueCommand({
-      SecretId: secretId,
+    const command = new GetParametersByPathCommand({
+      Path: authParameterPath,
     });
 
     const response = await client.send(command);
 
-    if (!response.SecretString) {
-      throw new Error("Secret does not contain a SecretString");
+    if (!response.Parameters?.length) {
+      throw new Error("Parameter path does not contain Parameters");
     }
 
-    cachedSecrets = JSON.parse(response.SecretString);
+    cachedSecrets.AuthUsername = response.Parameters.find(
+      (p) => p.Name === `${authParameterPath}/username`
+    )!.Value;
+    cachedSecrets.AuthPassword = response.Parameters.find(
+      (p) => p.Name === `${authParameterPath}/password`
+    )!.Value;
+    cachedSecrets.AuthSecret = response.Parameters.find(
+      (p) => p.Name === `${authParameterPath}/secret`
+    )!.Value;
 
     // Cache for 1 hour
     cacheExpiresAt = now + 60 * 60 * 1000;

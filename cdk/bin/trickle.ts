@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
 import { TrickleStack } from "../lib/trickle-stack";
+import { TrickleFrontendCertificateStack } from "../lib/frontend-certificate-stack";
 import * as os from "os";
 
 const app = new cdk.App();
@@ -23,6 +24,26 @@ if (!authUsername || !authPassword) {
   );
 }
 
+// Create frontend certificate stack (must be in us-east-1 for CloudFront)
+const certificateStack = new TrickleFrontendCertificateStack(
+  app,
+  `TrickleFrontendCertificateStack-${stage}`,
+  {
+    stackName: `trickle-frontend-cert-${stage}`,
+    env: {
+      region: "us-east-1",
+      account: process.env.CDK_DEFAULT_ACCOUNT,
+    },
+    stage,
+    hostedZoneName: "qed.fi",
+    tags: {
+      Stage: stage,
+      Project: "Trickle",
+    },
+  }
+);
+
+// Create main stack (can be in any region)
 new TrickleStack(app, `TrickleStack-${stage}`, {
   stackName: `trickle-${stage}`,
   env: {
@@ -33,6 +54,7 @@ new TrickleStack(app, `TrickleStack-${stage}`, {
   authUsername,
   authPassword,
   authSecret,
+  frontendCertificateArn: certificateStack.certificateArn,
   tags: {
     Stage: stage,
     Project: "Trickle",
