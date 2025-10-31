@@ -3,7 +3,6 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SchedulerClient, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
-import { Resource } from "sst";
 
 // AWS SDK automatically detects the region from Lambda execution context
 const ses = new SESv2Client({});
@@ -49,7 +48,7 @@ export async function handler(event: EmailMessage) {
     // Increment sent count on job
     const updateResult = await dynamo.send(
       new UpdateCommand({
-        TableName: Resource.JobsTable.name,
+        TableName: process.env.JOBS_TABLE_NAME!,
         Key: { jobId: event.jobId },
         UpdateExpression: "SET sent = sent + :inc",
         ExpressionAttributeValues: {
@@ -65,7 +64,7 @@ export async function handler(event: EmailMessage) {
       if (sent + failed >= totalRecipients) {
         await dynamo.send(
           new UpdateCommand({
-            TableName: Resource.JobsTable.name,
+            TableName: process.env.JOBS_TABLE_NAME!,
             Key: { jobId: event.jobId },
             UpdateExpression: "SET #status = :status, completedAt = :completedAt",
             ExpressionAttributeNames: {
@@ -106,7 +105,7 @@ export async function handler(event: EmailMessage) {
 
     const updateResult = await dynamo.send(
       new UpdateCommand({
-        TableName: Resource.JobsTable.name,
+        TableName: process.env.JOBS_TABLE_NAME!,
         Key: { jobId: event.jobId },
         UpdateExpression: "SET failed = failed + :inc, lastError = :error, lastErrorAt = :errorAt",
         ExpressionAttributeValues: {
@@ -128,7 +127,7 @@ export async function handler(event: EmailMessage) {
       if (sent + failed >= totalRecipients) {
         await dynamo.send(
           new UpdateCommand({
-            TableName: Resource.JobsTable.name,
+            TableName: process.env.JOBS_TABLE_NAME!,
             Key: { jobId: event.jobId },
             UpdateExpression: "SET #status = :status, completedAt = :completedAt",
             ExpressionAttributeNames: {
@@ -216,7 +215,7 @@ async function sendEmail(message: EmailMessage) {
       // Fetch attachment from S3
       const result = await s3.send(
         new GetObjectCommand({
-          Bucket: Resource.AttachmentsBucket.name,
+          Bucket: process.env.ATTACHMENTS_BUCKET_NAME!,
           Key: attachmentKey,
         })
       );

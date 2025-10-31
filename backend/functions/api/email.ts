@@ -14,7 +14,6 @@ import {
 } from "@aws-sdk/client-scheduler";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { SESv2Client, ListEmailIdentitiesCommand, GetAccountCommand } from "@aws-sdk/client-sesv2";
-import { Resource } from "sst";
 import { randomUUID } from "crypto";
 import { verifyToken } from "./auth";
 
@@ -187,8 +186,11 @@ export async function send(event: any, context: any) {
     const accountId = arnParts[4];
     console.log("AWS Region:", region, "Account ID:", accountId);
 
-    // Construct worker Lambda ARN
-    const workerArn = `arn:aws:lambda:${region}:${accountId}:function:${Resource.EmailWorker.name}`;
+    // Get worker Lambda ARN from environment variable
+    const workerArn = process.env.WORKER_FUNCTION_ARN;
+    if (!workerArn) {
+      throw new Error("WORKER_FUNCTION_ARN environment variable not set");
+    }
 
     // Get scheduler role ARN from environment variable
     const schedulerRoleArn = process.env.SCHEDULER_ROLE_ARN;
@@ -330,7 +332,7 @@ export async function send(event: any, context: any) {
     // Get config for rate limiting
     const configResult = await dynamo.send(
       new GetCommand({
-        TableName: Resource.ConfigTable.name,
+        TableName: process.env.CONFIG_TABLE_NAME!,
         Key: { userId },
       })
     );
@@ -343,7 +345,7 @@ export async function send(event: any, context: any) {
 
     await dynamo.send(
       new PutCommand({
-        TableName: Resource.JobsTable.name,
+        TableName: process.env.JOBS_TABLE_NAME!,
         Item: {
           jobId,
           userId,
@@ -373,7 +375,7 @@ export async function send(event: any, context: any) {
 
         await s3.send(
           new PutObjectCommand({
-            Bucket: Resource.AttachmentsBucket.name,
+            Bucket: process.env.ATTACHMENTS_BUCKET_NAME!,
             Key: key,
             Body: Buffer.from(attachment.content, "base64"),
             ContentType: contentType,
@@ -386,7 +388,7 @@ export async function send(event: any, context: any) {
       if (attachmentKeys.length > 0) {
         await dynamo.send(
           new UpdateCommand({
-            TableName: Resource.JobsTable.name,
+            TableName: process.env.JOBS_TABLE_NAME!,
             Key: { jobId },
             UpdateExpression: "SET attachments = :attachments",
             ExpressionAttributeValues: {
@@ -455,7 +457,7 @@ export async function send(event: any, context: any) {
         try {
           await s3.send(
             new DeleteObjectCommand({
-              Bucket: Resource.AttachmentsBucket.name,
+              Bucket: process.env.ATTACHMENTS_BUCKET_NAME!,
               Key: key,
             })
           );
@@ -469,7 +471,7 @@ export async function send(event: any, context: any) {
       try {
         await dynamo.send(
           new UpdateCommand({
-            TableName: Resource.JobsTable.name,
+            TableName: process.env.JOBS_TABLE_NAME!,
             Key: { jobId },
             UpdateExpression: "SET #status = :status",
             ExpressionAttributeNames: { "#status": "status" },
@@ -519,7 +521,7 @@ export async function status(event: any) {
     // Get job details
     const jobResult = await dynamo.send(
       new GetCommand({
-        TableName: Resource.JobsTable.name,
+        TableName: process.env.JOBS_TABLE_NAME!,
         Key: { jobId },
       })
     );
@@ -573,7 +575,7 @@ export async function list(event: any) {
     // Query jobs by userId using the userIndex GSI
     const result = await dynamo.send(
       new QueryCommand({
-        TableName: Resource.JobsTable.name,
+        TableName: process.env.JOBS_TABLE_NAME!,
         IndexName: "userIndex",
         KeyConditionExpression: "userId = :userId",
         ExpressionAttributeValues: {

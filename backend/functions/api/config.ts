@@ -1,7 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { SESv2Client, GetAccountCommand } from "@aws-sdk/client-sesv2";
-import { Resource } from "sst";
 import { verifyToken } from "./auth";
 
 const dynamoClient = new DynamoDBClient({});
@@ -25,7 +24,7 @@ export async function get(event: any) {
 
     const result = await dynamo.send(
       new GetCommand({
-        TableName: Resource.ConfigTable.name,
+        TableName: process.env.CONFIG_TABLE_NAME!,
         Key: { userId },
       })
     );
@@ -101,7 +100,7 @@ export async function update(event: any) {
 
     await dynamo.send(
       new PutCommand({
-        TableName: Resource.ConfigTable.name,
+        TableName: process.env.CONFIG_TABLE_NAME!,
         Item: config,
       })
     );
