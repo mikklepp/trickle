@@ -275,7 +275,7 @@ export class TrickleStack extends cdk.Stack {
         new iam.PolicyStatement({
           actions: ["ssm:GetParametersByPath"],
           resources: [
-            `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth/*`,
+            `arn:aws:ssm:${this.region}:${this.account}:parameter/app/trickle/${stage}/auth`,
           ],
         })
       );
