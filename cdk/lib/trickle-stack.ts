@@ -255,12 +255,7 @@ export class TrickleStack extends cdk.Stack {
 
       fn.addToRolePolicy(
         new iam.PolicyStatement({
-          actions: [
-            "ses:ListIdentities",
-            "ses:GetIdentityVerificationAttributes",
-            "ses:ListEmailIdentities",
-            "ses:GetAccount",
-          ],
+          actions: ["ses:ListEmailIdentities", "ses:GetAccount"],
           resources: ["*"],
         })
       );
