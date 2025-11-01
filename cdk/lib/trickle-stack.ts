@@ -5,6 +5,8 @@ import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as ses from "aws-cdk-lib/aws-ses";
@@ -52,43 +54,6 @@ export class TrickleStack extends cdk.Stack {
       stringValue: authSecret,
     });
 
-    // ========== SES Configuration Set ==========
-    // Configuration set for tracking email events via CloudWatch
-    const configurationSetName = `trickle-${stage}`;
-
-    // Create SES Configuration Set
-    const configSet = new ses.CfnConfigurationSet(this, "EmailConfigurationSet", {
-      name: configurationSetName,
-    });
-
-    // Add CloudWatch event destination for email event tracking
-    new ses.CfnConfigurationSetEventDestination(this, "CloudWatchEventDestination", {
-      configurationSetName: configSet.ref,
-      eventDestination: {
-        name: `${configurationSetName}-cloudwatch`,
-        enabled: true,
-        matchingEventTypes: [
-          "send",
-          "delivery",
-          "bounce",
-          "complaint",
-          "reject",
-          "deliveryDelay",
-          "open",
-          "click",
-        ],
-        cloudWatchDestination: {
-          dimensionConfigurations: [
-            {
-              defaultDimensionValue: configurationSetName,
-              dimensionName: "ses:configuration-set",
-              dimensionValueSource: "messageTag",
-            },
-          ],
-        },
-      },
-    });
-
     // ========== S3 Bucket for Attachments ==========
     const attachmentsBucket = new s3.Bucket(this, "AttachmentsBucket", {
       bucketName: `trickle-attachments-${stage}-${this.account}`,
@@ -106,12 +71,14 @@ export class TrickleStack extends cdk.Stack {
         {
           id: "delete-old-attachments",
           enabled: true,
-          expiration: cdk.Duration.days(7),
+          expiration: cdk.Duration.days(30), // Aligned with job and event retention
         },
       ],
     });
 
     // ========== DynamoDB Tables ==========
+    // Jobs table: Stores email job records (status, recipient count, error tracking)
+    // TTL: 30 days (aligned with email events retention - parent records must outlive children)
     const jobsTable = new dynamodb.Table(this, "JobsTable", {
       tableName: `trickle-jobs-${stage}`,
       partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
@@ -134,6 +101,79 @@ export class TrickleStack extends cdk.Stack {
       removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
+    // Email events table (stores SES events - Send, Delivery, Bounce, Complaint, Open, Click, etc)
+    // TTL: 30 days (aligned with jobs table retention to ensure events are accessible within job lifetime)
+    const emailEventsTable = new dynamodb.Table(this, "EmailEventsTable", {
+      tableName: `trickle-email-events-${stage}`,
+      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "timestamp", type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: "ttl",
+    });
+
+    // Global secondary index for querying by recipient
+    emailEventsTable.addGlobalSecondaryIndex({
+      indexName: "recipientIndex",
+      partitionKey: { name: "recipient", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "timestamp", type: dynamodb.AttributeType.NUMBER },
+    });
+
+    // ========== SES Configuration Set ==========
+    const configurationSetName = `trickle-${stage}`;
+
+    // Create SNS topic for SES events
+    const sesEventsTopic = new sns.Topic(this, "SESEventsTopic", {
+      topicName: `trickle-ses-events-${stage}`,
+      displayName: "Trickle SES Email Events",
+    });
+
+    // Create SES Configuration Set
+    const configSet = new ses.CfnConfigurationSet(this, "EmailConfigurationSet", {
+      name: configurationSetName,
+    });
+
+    // Add SNS event destination for email event tracking
+    new ses.CfnConfigurationSetEventDestination(this, "SNSEventDestination", {
+      configurationSetName: configSet.ref,
+      eventDestination: {
+        name: `${configurationSetName}-sns`,
+        enabled: true,
+        matchingEventTypes: [
+          "send",
+          "delivery",
+          "bounce",
+          "complaint",
+          "reject",
+          "deliveryDelay",
+          "open",
+          "click",
+        ],
+        snsDestination: {
+          topicArn: sesEventsTopic.topicArn,
+        },
+      },
+    });
+
+    // Create Lambda to process SES events from SNS and write to DynamoDB
+    const sesEventsProcessor = new lambda.Function(this, "SESEventsProcessor", {
+      functionName: `trickle-${stage}-ses-events-processor`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "api/ses-events-processor.handler",
+      code: lambda.Code.fromAsset("../backend/dist"),
+      environment: {
+        EMAIL_EVENTS_TABLE: emailEventsTable.tableName,
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+    });
+
+    // Subscribe Lambda to SNS topic
+    sesEventsTopic.addSubscription(new snsSubscriptions.LambdaSubscription(sesEventsProcessor));
+
+    // Grant Lambda permission to write to email events table
+    emailEventsTable.grantWriteData(sesEventsProcessor);
+
     // ========== SQS Dead Letter Queue ==========
     const emailDLQ = new sqs.Queue(this, "EmailDLQ", {
       queueName: `trickle-email-dlq-${stage}`,
@@ -144,7 +184,7 @@ export class TrickleStack extends cdk.Stack {
 
     // Worker Lambda (invoked by EventBridge Scheduler)
     const workerFunction = new lambda.Function(this, "EmailWorker", {
-      functionName: `trickle-email-worker-${stage}`,
+      functionName: `trickle-${stage}-email-worker`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "worker/index.handler",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -193,6 +233,7 @@ export class TrickleStack extends cdk.Stack {
     const apiEnvironment = {
       JOBS_TABLE_NAME: jobsTable.tableName,
       CONFIG_TABLE_NAME: configTable.tableName,
+      EMAIL_EVENTS_TABLE_NAME: emailEventsTable.tableName,
       ATTACHMENTS_BUCKET_NAME: attachmentsBucket.bucketName,
       WORKER_FUNCTION_ARN: workerFunction.functionArn,
       SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
@@ -201,7 +242,7 @@ export class TrickleStack extends cdk.Stack {
 
     // API Lambda functions
     const authLoginFunction = new lambda.Function(this, "AuthLogin", {
-      functionName: `trickle-auth-login-${stage}`,
+      functionName: `trickle-${stage}-auth-login`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/auth.login",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -210,7 +251,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const sendersListFunction = new lambda.Function(this, "SendersList", {
-      functionName: `trickle-senders-list-${stage}`,
+      functionName: `trickle-${stage}-senders-list`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/senders.list",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -219,7 +260,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const emailSendFunction = new lambda.Function(this, "EmailSend", {
-      functionName: `trickle-email-send-${stage}`,
+      functionName: `trickle-${stage}-email-send`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/email.send",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -228,7 +269,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const emailListFunction = new lambda.Function(this, "EmailList", {
-      functionName: `trickle-email-list-${stage}`,
+      functionName: `trickle-${stage}-email-list`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/email.list",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -237,7 +278,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const emailStatusFunction = new lambda.Function(this, "EmailStatus", {
-      functionName: `trickle-email-status-${stage}`,
+      functionName: `trickle-${stage}-email-status`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/email.status",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -246,7 +287,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const configGetFunction = new lambda.Function(this, "ConfigGet", {
-      functionName: `trickle-config-get-${stage}`,
+      functionName: `trickle-${stage}-config-get`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/config.get",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -255,7 +296,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const configUpdateFunction = new lambda.Function(this, "ConfigUpdate", {
-      functionName: `trickle-config-update-${stage}`,
+      functionName: `trickle-${stage}-config-update`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/config.update",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -264,7 +305,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const accountQuotaFunction = new lambda.Function(this, "AccountQuota", {
-      functionName: `trickle-account-quota-${stage}`,
+      functionName: `trickle-${stage}-account-quota`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/account.quota",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -273,7 +314,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const emailEventsSummaryFunction = new lambda.Function(this, "EmailEventsSummary", {
-      functionName: `trickle-email-events-summary-${stage}`,
+      functionName: `trickle-${stage}-email-events-summary`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/email-events.summary",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -282,7 +323,7 @@ export class TrickleStack extends cdk.Stack {
     });
 
     const emailEventsLogsFunction = new lambda.Function(this, "EmailEventsLogs", {
-      functionName: `trickle-email-events-logs-${stage}`,
+      functionName: `trickle-${stage}-email-events-logs`,
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: "api/email-events.logs",
       code: lambda.Code.fromAsset("../backend/dist"),
@@ -325,31 +366,22 @@ export class TrickleStack extends cdk.Stack {
       })
     );
 
-    // emailEventsSummaryFunction - needs Parameter Store + CloudWatch Logs read
+    // emailEventsSummaryFunction - needs Parameter Store + DynamoDB read
     grantAuthParameterAccess(emailEventsSummaryFunction);
-    emailEventsSummaryFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["logs:StartQuery", "logs:GetQueryResults"],
-        resources: ["arn:aws:logs:*:*:log-group:/aws/ses/email-events:*"],
-      })
-    );
+    emailEventsTable.grantReadData(emailEventsSummaryFunction);
 
-    // emailEventsLogsFunction - needs Parameter Store + CloudWatch Logs read
+    // emailEventsLogsFunction - needs Parameter Store + DynamoDB read
     grantAuthParameterAccess(emailEventsLogsFunction);
-    emailEventsLogsFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["logs:StartQuery", "logs:GetQueryResults"],
-        resources: ["arn:aws:logs:*:*:log-group:/aws/ses/email-events:*"],
-      })
-    );
+    emailEventsTable.grantReadData(emailEventsLogsFunction);
 
     // emailListFunction - needs Parameter Store + jobs table read-only
     grantAuthParameterAccess(emailListFunction);
     jobsTable.grantReadData(emailListFunction);
 
-    // emailStatusFunction - needs Parameter Store + jobs table read-only
+    // emailStatusFunction - needs Parameter Store + jobs table read-only + email events for metrics
     grantAuthParameterAccess(emailStatusFunction);
     jobsTable.grantReadData(emailStatusFunction);
+    emailEventsTable.grantReadData(emailStatusFunction);
 
     // configGetFunction - needs Parameter Store + config table read-only
     grantAuthParameterAccess(configGetFunction);
@@ -595,6 +627,35 @@ export class TrickleStack extends cdk.Stack {
     new cdk.CfnOutput(this, "WorkerFunctionArn", {
       value: workerFunction.functionArn,
       description: "Email Worker Lambda ARN",
+    });
+
+    // ========== Lambda Log Groups ==========
+    // Export all log group names as JSON for logging scripts
+    const logGroups = [
+      { name: "SES Events Processor", logGroup: `/aws/lambda/${sesEventsProcessor.functionName}` },
+      { name: "Email Worker", logGroup: `/aws/lambda/${workerFunction.functionName}` },
+      { name: "Auth Login", logGroup: `/aws/lambda/${authLoginFunction.functionName}` },
+      { name: "Senders List", logGroup: `/aws/lambda/${sendersListFunction.functionName}` },
+      { name: "Email Send", logGroup: `/aws/lambda/${emailSendFunction.functionName}` },
+      { name: "Email List", logGroup: `/aws/lambda/${emailListFunction.functionName}` },
+      { name: "Email Status", logGroup: `/aws/lambda/${emailStatusFunction.functionName}` },
+      { name: "Config Get", logGroup: `/aws/lambda/${configGetFunction.functionName}` },
+      { name: "Config Update", logGroup: `/aws/lambda/${configUpdateFunction.functionName}` },
+      { name: "Account Quota", logGroup: `/aws/lambda/${accountQuotaFunction.functionName}` },
+      {
+        name: "Email Events Summary",
+        logGroup: `/aws/lambda/${emailEventsSummaryFunction.functionName}`,
+      },
+      {
+        name: "Email Events Logs",
+        logGroup: `/aws/lambda/${emailEventsLogsFunction.functionName}`,
+      },
+    ];
+
+    new cdk.CfnOutput(this, "LogGroupNames", {
+      value: JSON.stringify(logGroups),
+      description: "All Lambda log group names as JSON",
+      exportName: `trickle-log-groups-${stage}`,
     });
   }
 }

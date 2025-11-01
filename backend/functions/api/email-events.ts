@@ -1,22 +1,39 @@
-import {
-  CloudWatchLogsClient,
-  StartQueryCommand,
-  GetQueryResultsCommand,
-} from "@aws-sdk/client-cloudwatch-logs";
+import { DynamoDBClient, QueryCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { verifyToken } from "./auth.js";
+import { classifyEvent, EventClassification } from "./event-classifier.js";
+import { computeJobMetrics } from "./event-metrics.js";
 
-const logsClient = new CloudWatchLogsClient({});
-
-// CloudWatch log group where SES publishes events
-const LOG_GROUP_NAME = "/aws/ses/email-events";
+const dynamodb = new DynamoDBClient({});
+const tableName = process.env.EMAIL_EVENTS_TABLE_NAME || "trickle-email-events";
 
 interface EmailEvent {
-  timestamp: string;
+  timestamp: number;
   recipient: string;
   eventType: string;
   messageId: string;
   jobId: string;
   details?: Record<string, unknown>;
+}
+
+interface ClassifiedEmailEvent extends EmailEvent {
+  severity: string;
+  category?: string;
+  icon: string;
+  interpretation: string;
+  recommendation: string;
+  requiresAction: boolean;
+}
+
+interface JobMetrics {
+  hardBounceCount: number;
+  softBounceCount: number;
+  complaintCount: number;
+  rejectCount: number;
+  totalEventCount: number;
+  hardBounceRate: number;
+  complaintRate: number;
+  warnings: string[];
 }
 
 interface EventSummary {
@@ -46,16 +63,19 @@ export async function summary(event: any) {
       };
     }
 
-    // Query CloudWatch Logs for email events with this jobId
-    const queryString = `
-      fields @timestamp, eventType, recipient, messageId
-      | filter eventMetadata.jobId = "${jobId}"
-      | stats count() as count by eventType
-    `;
+    // Query DynamoDB for events with this jobId
+    const queryResult = await dynamodb.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "jobId = :jobId",
+        ExpressionAttributeValues: {
+          ":jobId": { S: jobId },
+        },
+        Select: "ALL_ATTRIBUTES",
+      })
+    );
 
-    const queryResult = await queryLogs(queryString);
-
-    // Transform results into summary format
+    // Initialize summary with all event types
     const summary: EventSummary = {
       Send: 0,
       Delivery: 0,
@@ -67,15 +87,15 @@ export async function summary(event: any) {
       Click: 0,
     };
 
-    // Parse query results and populate summary
-    if (queryResult && Array.isArray(queryResult)) {
-      queryResult.forEach((row: any) => {
-        const eventType = row.find((f: any) => f.field === "eventType")?.value;
-        const count = parseInt(row.find((f: any) => f.field === "count")?.value || "0");
+    // Count events by type
+    if (queryResult.Items) {
+      for (const item of queryResult.Items) {
+        const unmarshalled = unmarshall(item);
+        const eventType = unmarshalled.eventType as string;
         if (eventType && summary.hasOwnProperty(eventType)) {
-          summary[eventType] = count;
+          summary[eventType]++;
         }
-      });
+      }
     }
 
     return {
@@ -83,16 +103,16 @@ export async function summary(event: any) {
       body: JSON.stringify(summary),
     };
   } catch (error) {
-    console.error("Error fetching email event summary:", error);
+    console.error("Error querying email event summary:", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to fetch email event summary" }),
+      body: JSON.stringify({ error: "Failed to query email events" }),
     };
   }
 }
 
 /**
- * Get raw email events for a job with optional filtering
+ * Get email events for a specific job with classifications, recommendations, and pagination
  */
 export async function logs(event: any) {
   try {
@@ -114,105 +134,115 @@ export async function logs(event: any) {
       };
     }
 
-    // Optional filters from query parameters
-    const recipient = event.queryStringParameters?.recipient;
-    const eventType = event.queryStringParameters?.eventType;
+    // Get optional filters from query parameters
+    const eventType = event.queryStringParameters?.eventType || null;
+    const recipientFilter = event.queryStringParameters?.recipient || null;
+    const nextTokenParam = event.queryStringParameters?.nextToken || null;
 
-    // Build CloudWatch Logs Insights query
-    let queryString = `
-      fields @timestamp, eventType, recipient, messageId, @message
-      | filter eventMetadata.jobId = "${jobId}"
-    `;
+    // Page size
+    let limit = parseInt(event.queryStringParameters?.limit || "100", 10);
+    if (limit < 1 || limit > 1000) limit = 100;
 
-    if (eventType) {
-      queryString += `| filter eventType = "${eventType}"`;
+    // Get totalRecipients if provided (for metric calculations)
+    const totalRecipients = event.queryStringParameters?.totalRecipients
+      ? parseInt(event.queryStringParameters.totalRecipients, 10)
+      : 0;
+
+    // Parse pagination token if provided
+    let exclusiveStartKey: any = undefined;
+    if (nextTokenParam) {
+      try {
+        exclusiveStartKey = JSON.parse(nextTokenParam);
+      } catch (err) {
+        console.error("Invalid pagination token:", err);
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: "Invalid pagination token" }),
+        };
+      }
     }
 
-    if (recipient) {
-      queryString += `| filter recipient = "${recipient}"`;
+    // Query DynamoDB for events with this jobId
+    const queryResult = await dynamodb.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "jobId = :jobId",
+        ExpressionAttributeValues: {
+          ":jobId": { S: jobId },
+        },
+        ScanIndexForward: false, // Sort by timestamp descending (latest first)
+        Limit: limit,
+        ExclusiveStartKey: exclusiveStartKey,
+      })
+    );
+
+    let classifiedEvents: ClassifiedEmailEvent[] = [];
+    let nextToken: string | null = null;
+
+    // Convert items, apply filters, and classify
+    if (queryResult.Items) {
+      for (const item of queryResult.Items) {
+        const unmarshalled = unmarshall(item) as any;
+        const email: EmailEvent = {
+          jobId: unmarshalled.jobId,
+          timestamp: unmarshalled.timestamp,
+          recipient: unmarshalled.recipient,
+          eventType: unmarshalled.eventType,
+          messageId: unmarshalled.messageId,
+          details: unmarshalled.details,
+        };
+
+        // Apply event type filter if specified
+        if (eventType && email.eventType !== eventType) {
+          continue;
+        }
+
+        // Apply recipient filter if specified
+        if (
+          recipientFilter &&
+          !email.recipient.toLowerCase().includes(recipientFilter.toLowerCase())
+        ) {
+          continue;
+        }
+
+        // Classify the event
+        const classification = classifyEvent(email);
+
+        const classifiedEvent: ClassifiedEmailEvent = {
+          ...email,
+          ...classification,
+        };
+
+        classifiedEvents.push(classifiedEvent);
+      }
     }
 
-    queryString += `| stats count() as count by @timestamp, eventType, recipient, messageId`;
-
-    const queryResult = await queryLogs(queryString);
-
-    // Transform results into event format
-    const events: EmailEvent[] = [];
-
-    if (queryResult && Array.isArray(queryResult)) {
-      queryResult.forEach((row: any) => {
-        events.push({
-          timestamp: row.find((f: any) => f.field === "@timestamp")?.value || "",
-          recipient: row.find((f: any) => f.field === "recipient")?.value || "",
-          eventType: row.find((f: any) => f.field === "eventType")?.value || "",
-          messageId: row.find((f: any) => f.field === "messageId")?.value || "",
-          jobId,
-        });
-      });
+    // Generate next pagination token if there are more results
+    if (queryResult.LastEvaluatedKey) {
+      nextToken = JSON.stringify(queryResult.LastEvaluatedKey);
     }
 
-    // Sort by timestamp descending
-    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Compute job metrics
+    const jobMetrics = await computeJobMetrics(jobId, totalRecipients);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        events,
-        count: events.length,
+        events: classifiedEvents,
+        count: classifiedEvents.length,
+        nextToken,
         filters: {
           eventType: eventType || null,
-          recipient: recipient || null,
+          recipient: recipientFilter || null,
         },
+        jobMetrics,
       }),
     };
   } catch (error) {
-    console.error("Error fetching email events:", error);
+    console.error("Error querying email event logs:", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to fetch email events" }),
+      body: JSON.stringify({ error: "Failed to query email events" }),
     };
-  }
-}
-
-/**
- * Helper function to query CloudWatch Logs
- */
-async function queryLogs(queryString: string): Promise<any[]> {
-  try {
-    // Start the query
-    const startQueryResponse = await logsClient.send(
-      new StartQueryCommand({
-        logGroupName: LOG_GROUP_NAME,
-        startTime: Math.floor(Date.now() / 1000) - 86400 * 7, // Last 7 days
-        endTime: Math.floor(Date.now() / 1000),
-        queryString,
-      })
-    );
-
-    if (!startQueryResponse.queryId) {
-      throw new Error("Failed to start CloudWatch Logs query");
-    }
-
-    // Wait for query to complete
-    let queryStatus = "Running";
-    let queryResults: any[] = [];
-
-    while (queryStatus === "Running" || queryStatus === "Scheduled") {
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
-
-      const getResultsResponse = await logsClient.send(
-        new GetQueryResultsCommand({
-          queryId: startQueryResponse.queryId,
-        })
-      );
-
-      queryStatus = getResultsResponse.status || "";
-      queryResults = getResultsResponse.results || [];
-    }
-
-    return queryResults;
-  } catch (error) {
-    console.error("CloudWatch Logs query error:", error);
-    return [];
   }
 }

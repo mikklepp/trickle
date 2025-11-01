@@ -12,7 +12,20 @@
     "typecheck": "npm run typecheck --workspaces",
     "build": "npm run build --workspaces",
     "deploy": "npm run build && npm run deploy --workspace=cdk",
+    "dev": "npm-run-all --parallel backend:watch frontend:watch cdk:watch",
+    "dev:logs": "npm-run-all --parallel dev logs:follow",
+    "backend:watch": "npm run watch --workspace=backend",
+    "frontend:watch": "npm run watch --workspace=frontend",
+    "cdk:watch": "npm run cdk --workspace=cdk -- watch --all",
     "watch": "npm run watch --workspace=cdk",
+    "logs": "./scripts/logs.sh all",
+    "logs:api": "./scripts/logs.sh api",
+    "logs:worker": "./scripts/logs.sh worker",
+    "logs:processor": "./scripts/logs.sh processor",
+    "logs:config": "./scripts/logs.sh config",
+    "logs:events": "./scripts/logs.sh events",
+    "logs:debug": "./scripts/logs.sh debug",
+    "logs:follow": "npm run logs",
     "diff": "npm run diff --workspace=cdk",
     "synth": "npm run synth --workspace=cdk",
     "destroy": "npm run destroy --workspace=cdk",
@@ -23,6 +36,7 @@
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
+    "npm-run-all": "^4.1.5",
     "prettier": "^3.6.2"
   },
   "lint-staged": {

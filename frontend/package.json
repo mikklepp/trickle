@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "watch": "npm-run-all --parallel tsc:watch vite:watch",
+    "tsc:watch": "tsc -b --watch",
+    "vite:watch": "vite build --watch"
   },
   "dependencies": {
     "browser-image-compression": "^2.0.2",
@@ -25,6 +28,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.4.0",
+    "npm-run-all": "^4.1.5",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.2",
     "vite": "^7.1.12"

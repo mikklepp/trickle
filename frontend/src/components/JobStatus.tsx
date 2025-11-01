@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
+import { calculateETA } from "../utils/calculateETA";
+
+// Auto-refresh interval in milliseconds (only while job is pending)
+// Refreshes roughly at the cadence emails are being sent (aligned with rateLimit)
+const AUTO_REFRESH_INTERVAL_MS = 5000; // 5 seconds - user will see updates at ~rateLimit frequency
 
 /**
  * Formats an ISO date string in local time
@@ -29,6 +34,17 @@ interface EventMetrics {
   Click: number;
 }
 
+interface JobMetrics {
+  hardBounceCount: number;
+  softBounceCount: number;
+  complaintCount: number;
+  rejectCount: number;
+  totalEventCount: number;
+  hardBounceRate: number;
+  complaintRate: number;
+  warnings: string[];
+}
+
 interface JobData {
   jobId: string;
   status: string;
@@ -45,6 +61,7 @@ interface JobData {
     errorMessage: string;
   };
   lastErrorAt?: string;
+  metrics?: JobMetrics;
 }
 
 interface JobListItem {
@@ -84,6 +101,19 @@ export default function JobStatus({
       fetchJobStatus(jobId);
     }
   }, [jobId]);
+
+  // Auto-refresh while job is pending
+  useEffect(() => {
+    if (!jobId || !jobData || jobData.status !== "pending") {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      fetchJobStatus(jobId);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [jobId, jobData]);
 
   const fetchJobs = async () => {
     setLoadingJobs(true);
@@ -125,7 +155,7 @@ export default function JobStatus({
         if (onJobIdChange) {
           onJobIdChange(id);
         }
-        // Fetch event metrics for this job
+        // Fetch summary metrics for event type counts (for backward compatibility)
         fetchEventMetrics(id);
       } else {
         setError(data.error || "Failed to fetch job status");
@@ -191,6 +221,118 @@ export default function JobStatus({
 
       {jobData && (
         <div className="job-details">
+          {/* Progress Bar at Top - with time estimates */}
+          {jobData.status === "pending" && (
+            (() => {
+              const eta = calculateETA({
+                totalRecipients: jobData.totalRecipients,
+                sent: jobData.sent,
+                createdAt: jobData.createdAt,
+              });
+              const progressPercent = (jobData.sent / jobData.totalRecipients) * 100;
+              return (
+                <div className="progress-section">
+                  <div className="progress-header">
+                    <span className="progress-label">
+                      Progress: {jobData.sent}/{jobData.totalRecipients} sent
+                    </span>
+                    {eta.remainingSeconds > 0 && (
+                      <span className="progress-time">
+                        ETA: {eta.completionTimeFormatted} ({eta.remainingDuration} remaining)
+                      </span>
+                    )}
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress"
+                      style={{
+                        width: `${progressPercent}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="progress-footer">
+                    <span className="elapsed">Elapsed: {eta.elapsedDuration}</span>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+
+          {/* Completed Job Progress */}
+          {jobData.status !== "pending" && (
+            <div className="progress-section completed">
+              <div className="progress-header">
+                <span className="progress-label">
+                  {jobData.status === "completed" ? "✅ Completed" : "❌ Failed"}: {jobData.sent}/{jobData.totalRecipients} sent
+                </span>
+              </div>
+              <div className="progress-bar">
+                <div
+                  className="progress"
+                  style={{
+                    width: "100%",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Action Required Section */}
+          {jobData.metrics && (jobData.metrics.hardBounceCount > 0 || jobData.metrics.complaintCount > 0) && (
+            <div className="action-required-section">
+              <h3>⚠️ Action Required</h3>
+              {jobData.metrics.hardBounceCount > 0 && (
+                <div className="action-item critical">
+                  <div className="action-header">
+                    <span className="action-icon">🔴</span>
+                    <span className="action-title">Remove Hard Bounced Addresses ({jobData.metrics.hardBounceCount})</span>
+                  </div>
+                  <p className="action-description">
+                    {jobData.metrics.hardBounceCount} email address(es) permanently failed delivery. These should be removed from your list immediately to protect your sender reputation.
+                  </p>
+                  {onNavigateToLogs && (
+                    <button
+                      className="action-button"
+                      onClick={() => onNavigateToLogs(jobData.jobId, "Bounce")}
+                    >
+                      View Hard Bounces
+                    </button>
+                  )}
+                </div>
+              )}
+              {jobData.metrics.complaintCount > 0 && (
+                <div className="action-item critical">
+                  <div className="action-header">
+                    <span className="action-icon">🚨</span>
+                    <span className="action-title">Investigate Complaints ({jobData.metrics.complaintCount})</span>
+                  </div>
+                  <p className="action-description">
+                    {jobData.metrics.complaintCount} recipient(s) marked your email as spam. Remove these addresses and review your email content and permission practices.
+                  </p>
+                  {onNavigateToLogs && (
+                    <button
+                      className="action-button"
+                      onClick={() => onNavigateToLogs(jobData.jobId, "Complaint")}
+                    >
+                      View Complaints
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Warnings from metrics */}
+          {jobData.metrics && jobData.metrics.warnings && jobData.metrics.warnings.length > 0 && (
+            <div className="metrics-warnings">
+              {jobData.metrics.warnings.map((warning, idx) => (
+                <div key={idx} className="warning-banner">
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="stats">
             <div className="stat stat-small">
               <label>Job ID</label>
@@ -224,6 +366,29 @@ export default function JobStatus({
               <label>Failed</label>
               <span className="error">{jobData.failed}</span>
             </div>
+
+            {/* Email Event Metrics from job.metrics */}
+            {jobData.metrics && (
+              <>
+                <div className={`stat stat-large ${jobData.metrics.hardBounceRate > 0.05 ? "critical" : jobData.metrics.hardBounceRate > 0.02 ? "warning" : ""}`}>
+                  <label>Hard Bounces</label>
+                  <span className={jobData.metrics.hardBounceRate > 0.05 ? "error" : jobData.metrics.hardBounceRate > 0.02 ? "error" : ""}>
+                    {jobData.metrics.hardBounceCount} ({(jobData.metrics.hardBounceRate * 100).toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="stat stat-large">
+                  <label>Soft Bounces</label>
+                  <span>{jobData.metrics.softBounceCount}</span>
+                </div>
+                <div className={`stat stat-large ${jobData.metrics.complaintRate > 0.003 ? "critical" : jobData.metrics.complaintRate > 0.001 ? "warning" : ""}`}>
+                  <label>Complaints</label>
+                  <span className={jobData.metrics.complaintRate > 0.001 ? "error" : ""}>
+                    {jobData.metrics.complaintCount} ({(jobData.metrics.complaintRate * 100).toFixed(2)}%)
+                  </span>
+                </div>
+              </>
+            )}
+
             <div className="stat stat-large">
               <label>Created At</label>
               <span>{formatDate(jobData.createdAt)}</span>
@@ -312,15 +477,6 @@ export default function JobStatus({
               </div>
             </div>
           )}
-
-          <div className="progress-bar">
-            <div
-              className="progress"
-              style={{
-                width: `${(jobData.sent / jobData.totalRecipients) * 100}%`,
-              }}
-            />
-          </div>
 
           {onNavigateToLogs && (
             <form className="search-form" style={{ marginTop: "20px" }}>

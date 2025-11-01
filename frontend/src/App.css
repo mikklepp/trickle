@@ -348,18 +348,71 @@ button[type="submit"]:disabled {
   color: #e74c3c;
 }
 
+/* Progress Section */
+.progress-section {
+  background: white;
+  border: 2px solid #3498db;
+  border-radius: 6px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.progress-section.completed {
+  border-color: #27ae60;
+  background: #f0fdf4;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.progress-label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.progress-time {
+  color: #e74c3c;
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
 .progress-bar {
-  height: 20px;
+  height: 24px;
   background: #ecf0f1;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
-  margin-top: 2rem;
+  margin: 0;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .progress {
   height: 100%;
   background: linear-gradient(90deg, #3498db, #2ecc71);
   transition: width 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.5rem;
+}
+
+.progress-footer {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #7f8c8d;
+  text-align: right;
+}
+
+.elapsed {
+  font-weight: 500;
+  color: #2c3e50;
 }
 
 .failed-recipients {
@@ -390,27 +443,32 @@ button[type="submit"]:disabled {
   border-bottom: none;
 }
 
-/* Jobs List */
-.jobs-list {
+/* Jobs List & Events List - Shared Styles */
+.jobs-list,
+.events-list {
   margin-top: 3rem;
 }
 
-.jobs-list h3 {
+.jobs-list h3,
+.events-list h3 {
   margin: 0 0 1rem 0;
   color: #2c3e50;
 }
 
-.jobs-list table {
+.jobs-list table,
+.events-list table {
   width: 100%;
   border-collapse: collapse;
   background: white;
 }
 
-.jobs-list thead {
+.jobs-list thead,
+.events-list thead {
   background: #f8f9fa;
 }
 
-.jobs-list th {
+.jobs-list th,
+.events-list th {
   padding: 1rem;
   text-align: left;
   font-weight: 600;
@@ -418,21 +476,25 @@ button[type="submit"]:disabled {
   border-bottom: 2px solid #dee2e6;
 }
 
-.jobs-list tbody tr {
+.jobs-list tbody tr,
+.events-list tbody tr {
   cursor: pointer;
   transition: background 0.2s;
   border-bottom: 1px solid #ecf0f1;
 }
 
-.jobs-list tbody tr:hover {
+.jobs-list tbody tr:hover,
+.events-list tbody tr:hover {
   background: #f8f9fa;
 }
 
-.jobs-list tbody tr.active {
+.jobs-list tbody tr.active,
+.events-list tbody tr.active {
   background: #e3f2fd;
 }
 
-.jobs-list td {
+.jobs-list td,
+.events-list td {
   padding: 1rem;
   color: #2c3e50;
 }
@@ -459,4 +521,243 @@ button[type="submit"]:disabled {
 .status-badge.completed_with_errors {
   background: #ffe6e6;
   color: #e74c3c;
+}
+
+/* Events List - Specific Styles */
+.events-list pre {
+  background: #f5f5f5;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Event type badges */
+.status-badge.send {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.status-badge.delivery {
+  background: #d5f4e6;
+  color: #27ae60;
+}
+
+.status-badge.bounce {
+  background: #ffe6e6;
+  color: #e74c3c;
+}
+
+.status-badge.complaint {
+  background: #ffe6e6;
+  color: #e74c3c;
+}
+
+.status-badge.reject {
+  background: #ffe6e6;
+  color: #e74c3c;
+}
+
+.status-badge.deliverydelay {
+  background: #fff4e6;
+  color: #f39c12;
+}
+
+.status-badge.open {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.status-badge.click {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+/* Warning and Alert Banners */
+.warning-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  color: #856404;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.warning-banner.critical,
+.metrics-warnings .warning-banner:first-child {
+  background: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+
+/* Metrics Summary */
+.metrics-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.metric-value.warning {
+  color: #f39c12;
+}
+
+.metric-value.critical {
+  color: #e74c3c;
+}
+
+/* Event Detail Cards */
+.events-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.event-detail-card {
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.event-detail-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.detail-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.detail-label {
+  min-width: 150px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.detail-value {
+  flex: 1;
+  word-break: break-word;
+  color: #555;
+}
+
+/* Metrics Warnings Container */
+.metrics-warnings {
+  margin-bottom: 1.5rem;
+}
+
+.metrics-warnings .warning-banner {
+  margin-bottom: 0.5rem;
+}
+
+/* Stat cards with warning/critical styling */
+.stat.warning {
+  border-left-color: #f39c12 !important;
+  background-color: #fffbf0 !important;
+}
+
+.stat.critical {
+  border-left-color: #e74c3c !important;
+  background-color: #fff5f5 !important;
+}
+
+/* Action Required Section */
+.action-required-section {
+  background: #fff5f5;
+  border: 2px solid #e74c3c;
+  border-radius: 6px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.action-required-section h3 {
+  margin: 0 0 1rem 0;
+  color: #c0392b;
+  font-size: 1.1rem;
+}
+
+.action-item {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border-left: 4px solid #e74c3c;
+  background: white;
+  border-radius: 4px;
+}
+
+.action-item.critical {
+  border-left-color: #e74c3c;
+}
+
+.action-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.action-icon {
+  font-size: 1.2rem;
+  min-width: 24px;
+}
+
+.action-title {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.action-description {
+  margin: 0.5rem 0 1rem 0;
+  color: #555;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.action-button {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.action-button:hover {
+  background: #c0392b;
+}
+
+.action-item:last-child {
+  margin-bottom: 0;
 }

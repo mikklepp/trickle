@@ -263,21 +263,20 @@ async function sendEmail(message: EmailMessage) {
       },
     },
     ConfigurationSetName: process.env.CONFIGURATION_SET_NAME,
-    Tags: [
-      {
-        Name: "jobId",
-        Value: message.jobId,
-      },
-    ],
   };
 
-  // Add List-Unsubscribe header (mailto to sender)
-  // SES automatically handles Message-ID and Return-Path
-  const listUnsubscribeHeader = {
-    Name: "List-Unsubscribe",
-    Value: `<mailto:${senderEmail}>`,
-  };
-  emailParams.Content.Simple.Headers.push(listUnsubscribeHeader);
+  // Add custom headers for tracking
+  const trackingHeaders = [
+    {
+      Name: "X-Job-ID",
+      Value: message.jobId,
+    },
+    {
+      Name: "List-Unsubscribe",
+      Value: `<mailto:${senderEmail}>`,
+    },
+  ];
+  emailParams.Content.Simple.Headers.push(...trackingHeaders);
 
   // Add custom headers
   if (message.headers) {

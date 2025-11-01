@@ -16,6 +16,7 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client
 import { SESv2Client, ListEmailIdentitiesCommand, GetAccountCommand } from "@aws-sdk/client-sesv2";
 import { randomUUID } from "crypto";
 import { verifyToken } from "./auth.js";
+import { computeJobMetrics } from "./event-metrics.js";
 
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);
@@ -341,7 +342,7 @@ export async function send(event: any, context: any) {
 
     // Create job record first (before uploads/schedules)
     const now = new Date();
-    const expiresAt = Math.floor(now.getTime() / 1000) + 7 * 24 * 60 * 60; // 7 days in seconds
+    const expiresAt = Math.floor(now.getTime() / 1000) + 30 * 24 * 60 * 60; // 30 days in seconds (aligned with email events)
 
     await dynamo.send(
       new PutCommand({
@@ -533,6 +534,9 @@ export async function status(event: any) {
       };
     }
 
+    // Compute email event metrics (bounces, complaints, etc.)
+    const metrics = await computeJobMetrics(jobId, jobResult.Item.totalRecipients);
+
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -547,6 +551,7 @@ export async function status(event: any) {
         subject: jobResult.Item.subject,
         lastError: jobResult.Item.lastError,
         lastErrorAt: jobResult.Item.lastErrorAt,
+        metrics,
       }),
     };
   } catch (error) {

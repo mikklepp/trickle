@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import ReactQuill from "react-quill-new";
 import imageCompression from "browser-image-compression";
 import { format } from "date-fns";
+import { calculateETA } from "../utils/calculateETA";
 import "react-quill-new/dist/quill.snow.css";
 
 /**
@@ -286,21 +287,15 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const estimatedTime = useMemo(() => {
     if (recipientCount === 0) return null;
 
-    const totalSeconds = recipientCount * config.rateLimit;
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+    const eta = calculateETA({
+      totalRecipients: recipientCount,
+      rateLimit: config.rateLimit,
+    });
 
-    const parts = [];
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
-
-    const duration = parts.join(" ");
-    const completionTime = new Date(Date.now() + totalSeconds * 1000);
-    const completionTimeStr = formatDate(completionTime);
-
-    return { duration, completionTime: completionTimeStr };
+    return {
+      duration: eta.totalDuration,
+      completionTime: formatDate(eta.estimatedCompletionTime),
+    };
   }, [recipientCount, config.rateLimit]);
 
   const handleSubmit = async (e: React.FormEvent) => {

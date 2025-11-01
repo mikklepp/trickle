@@ -1,30 +1,51 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
+import EventDetailCard from "./EventDetailCard";
 
 /**
- * Formats an ISO date string in local time
+ * Formats a timestamp (ISO string or milliseconds) in local time
  * Example: 2025-10-28 14:12
  */
-function formatDate(isoString: string): string {
-  const date = new Date(isoString);
+function formatDate(timestamp: string | number): string {
+  const date = new Date(timestamp);
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
 interface EmailEvent {
-  timestamp: string;
+  timestamp: number;
   recipient: string;
   eventType: string;
   messageId: string;
   jobId: string;
+  severity?: string;
+  icon?: string;
+  interpretation?: string;
+  recommendation?: string;
+  requiresAction?: boolean;
+  category?: string;
+  details?: Record<string, unknown>;
+}
+
+interface JobMetrics {
+  hardBounceCount: number;
+  softBounceCount: number;
+  complaintCount: number;
+  rejectCount: number;
+  totalEventCount: number;
+  hardBounceRate: number;
+  complaintRate: number;
+  warnings: string[];
 }
 
 interface EmailLogsResponse {
   events?: EmailEvent[];
   count?: number;
+  nextToken?: string | null;
   filters?: {
     eventType: string | null;
     recipient: string | null;
   };
+  jobMetrics?: JobMetrics;
   error?: string;
 }
 
@@ -57,9 +78,11 @@ export default function EmailLogs({
   const [searchJobId, setSearchJobId] = useState(jobId || "");
   const [events, setEvents] = useState<EmailEvent[]>([]);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [jobMetrics, setJobMetrics] = useState<JobMetrics | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [nextToken, setNextToken] = useState<string | null>(null);
 
   // Filters
   const [selectedEventType, setSelectedEventType] = useState<string | null>(
@@ -83,9 +106,11 @@ export default function EmailLogs({
     fetchJobs();
   }, []);
 
-  // Fetch logs when jobId changes
+  // Fetch logs when jobId or filters change (reset to first page)
   useEffect(() => {
     if (jobId) {
+      setNextToken(null);
+      setEvents([]);
       fetchLogs(jobId, selectedEventType, recipientFilter);
     }
   }, [jobId, selectedEventType, recipientFilter]);
@@ -113,17 +138,25 @@ export default function EmailLogs({
   const fetchLogs = async (
     id: string,
     eventType: string | null,
-    recipient: string
+    recipient: string,
+    pageToken?: string | null,
+    append: boolean = false,
+    totalRecipients?: number
   ) => {
     if (!id) return;
 
     setLoading(true);
-    setError("");
+    if (!append) setError("");
 
     try {
       const params = new URLSearchParams();
       if (eventType) params.append("eventType", eventType);
       if (recipient) params.append("recipient", recipient);
+      if (pageToken) params.append("nextToken", pageToken);
+      if (totalRecipients && totalRecipients > 0) {
+        params.append("totalRecipients", totalRecipients.toString());
+      }
+      params.append("limit", "100");
 
       const response = await fetch(`${apiUrl}/email/events/logs/${id}?${params.toString()}`, {
         headers: {
@@ -133,7 +166,15 @@ export default function EmailLogs({
       const data: EmailLogsResponse = await response.json();
 
       if (response.ok) {
-        setEvents(data.events || []);
+        if (append) {
+          // Load more: append to existing events
+          setEvents([...events, ...(data.events || [])]);
+        } else {
+          // Initial load: replace events and metrics
+          setEvents(data.events || []);
+          setJobMetrics(data.jobMetrics || null);
+        }
+        setNextToken(data.nextToken || null);
       } else {
         setError(data.error || "Failed to fetch email logs");
       }
@@ -143,6 +184,13 @@ export default function EmailLogs({
       setLoading(false);
     }
   };
+
+  const handleLoadMore = () => {
+    if (jobId && !loading && nextToken) {
+      fetchLogs(jobId, selectedEventType, recipientFilter, nextToken, true);
+    }
+  };
+
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,37 +259,81 @@ export default function EmailLogs({
 
       {/* Events Table */}
       {jobId && (
-        <div className="events-section">
+        <div className="events-list">
           <h3>Email Events ({events.length})</h3>
+
+          {/* Job Metrics Warnings */}
+          {jobMetrics && jobMetrics.warnings.length > 0 && (
+            <div className="metrics-warnings">
+              {jobMetrics.warnings.map((warning, idx) => (
+                <div key={idx} className="warning-banner">
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Job Metrics Summary */}
+          {jobMetrics && (
+            <div className="metrics-summary">
+              <div className="metric-item">
+                <span className="metric-label">Hard Bounces:</span>
+                <span className={`metric-value ${jobMetrics.hardBounceRate > 0.05 ? "critical" : jobMetrics.hardBounceRate > 0.02 ? "warning" : ""}`}>
+                  {jobMetrics.hardBounceCount} ({(jobMetrics.hardBounceRate * 100).toFixed(1)}%)
+                </span>
+              </div>
+              <div className="metric-item">
+                <span className="metric-label">Soft Bounces:</span>
+                <span className="metric-value">{jobMetrics.softBounceCount}</span>
+              </div>
+              <div className="metric-item">
+                <span className="metric-label">Complaints:</span>
+                <span className={`metric-value ${jobMetrics.complaintRate > 0.003 ? "critical" : jobMetrics.complaintRate > 0.001 ? "warning" : ""}`}>
+                  {jobMetrics.complaintCount} ({(jobMetrics.complaintRate * 100).toFixed(2)}%)
+                </span>
+              </div>
+              <div className="metric-item">
+                <span className="metric-label">Total Events:</span>
+                <span className="metric-value">{jobMetrics.totalEventCount}</span>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <p>Loading events...</p>
           ) : events.length === 0 ? (
             <p>No events found for this job.</p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Recipient</th>
-                  <th>Event Type</th>
-                  <th>Message ID</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((event) => (
-                  <tr key={`${event.messageId}-${event.eventType}`}>
-                    <td>{formatDate(event.timestamp)}</td>
-                    <td>{event.recipient}</td>
-                    <td>
-                      <span className={`event-type ${event.eventType.toLowerCase()}`}>
-                        {event.eventType}
-                      </span>
-                    </td>
-                    <td className="monospace">{event.messageId}</td>
-                  </tr>
+            <>
+              <div className="events-cards">
+                {events.map((event, index) => (
+                  <EventDetailCard
+                    key={`${index}-${event.timestamp}`}
+                    event={event as any}
+                  />
                 ))}
-              </tbody>
-            </table>
+              </div>
+              {events.length > 0 && nextToken && (
+                <div style={{ marginTop: "1rem", textAlign: "center" }}>
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loading}
+                    style={{
+                      background: "#3498db",
+                      color: "white",
+                      border: "none",
+                      padding: "0.75rem 1.5rem",
+                      borderRadius: "4px",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      fontSize: "1rem",
+                      opacity: loading ? 0.6 : 1,
+                    }}
+                  >
+                    {loading ? "Loading..." : "Load More"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

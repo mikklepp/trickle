@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { calculateETA } from "../utils/calculateETA";
 
 interface ConfigProps {
   apiUrl: string;
@@ -85,23 +86,18 @@ export default function Config({ apiUrl, token }: ConfigProps) {
     }
   };
 
-  const formatDuration = (totalSeconds: number): string => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    const parts = [];
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0) parts.push(`${minutes}m`);
-    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
-
-    return parts.join(" ");
-  };
-
   const estimates = useMemo(() => {
+    const eta100 = calculateETA({
+      totalRecipients: 100,
+      rateLimit: config.rateLimit,
+    });
+    const eta1000 = calculateETA({
+      totalRecipients: 1000,
+      rateLimit: config.rateLimit,
+    });
     return {
-      "100": formatDuration(100 * config.rateLimit),
-      "1000": formatDuration(1000 * config.rateLimit),
+      "100": eta100.totalDuration,
+      "1000": eta1000.totalDuration,
     };
   }, [config.rateLimit]);
 
