@@ -83,6 +83,8 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingSenders, setLoadingSenders] = useState(true);
+  const [loadingQuota, setLoadingQuota] = useState(true);
   const [config, setConfig] = useState<Config>({ rateLimit: 60, maxAttachmentSize: 10485760 });
   const [quota, setQuota] = useState<Quota | null>(null);
 
@@ -129,6 +131,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   };
 
   const fetchSenders = async () => {
+    setLoadingSenders(true);
     try {
       const response = await fetch(`${apiUrl}/senders`, {
         headers: {
@@ -147,6 +150,8 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       }
     } catch (err) {
       setError("Failed to fetch verified senders");
+    } finally {
+      setLoadingSenders(false);
     }
   };
 
@@ -166,6 +171,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   };
 
   const fetchQuota = async () => {
+    setLoadingQuota(true);
     try {
       const response = await fetch(`${apiUrl}/account/quota`, {
         headers: {
@@ -176,6 +182,8 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       setQuota(data);
     } catch (err) {
       console.error("Failed to fetch quota:", err);
+    } finally {
+      setLoadingQuota(false);
     }
   };
 
@@ -367,6 +375,17 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     }
   };
 
+  // Show loading state while fetching senders
+  if (loadingSenders) {
+    return (
+      <div className="email-form">
+        <h2>Send Email</h2>
+        <p>Loading verified senders...</p>
+      </div>
+    );
+  }
+
+  // Show error if no senders found after loading
   if (verifiedEmails.length === 0 && verifiedDomains.length === 0) {
     return (
       <div className="email-form">
@@ -387,7 +406,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     <div className="email-form">
       <h2>Send Email</h2>
 
-      {quota && (
+      {loadingQuota ? (
+        <div className="quota-info">Loading quota...</div>
+      ) : quota ? (
         <div className="quota-info">
           Sent today: <strong>{quota.sentLast24Hours}</strong> • Remaining:{" "}
           <strong>{quota.remaining}</strong>
@@ -401,7 +422,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
             </>
           )}
         </div>
-      )}
+      ) : null}
 
       <form onSubmit={handleSubmit}>
         <div className="form-group">
