@@ -51,6 +51,14 @@ export class TrickleStack extends cdk.Stack {
       stringValue: authSecret,
     });
 
+    // ========== SES Configuration Set ==========
+    // Configuration set for tracking email events via CloudWatch
+    // Note: CloudWatch event publishing must be configured via AWS Console or CLI:
+    // aws sesv2 put-configuration-set-event-destination-details --configuration-set-name trickle-{stage} \
+    //   --event-type SEND DELIVERY BOUNCE COMPLAINT REJECT DELIVERY_DELAY OPEN CLICK \
+    //   --event-destination-properties CloudWatchDestination={}
+    const configurationSetName = `trickle-${stage}`;
+
     // ========== S3 Bucket for Attachments ==========
     const attachmentsBucket = new s3.Bucket(this, "AttachmentsBucket", {
       bucketName: `trickle-attachments-${stage}-${this.account}`,
@@ -116,6 +124,7 @@ export class TrickleStack extends cdk.Stack {
         JOBS_TABLE_NAME: jobsTable.tableName,
         ATTACHMENTS_BUCKET_NAME: attachmentsBucket.bucketName,
         EMAIL_DLQ_URL: emailDLQ.queueUrl,
+        CONFIGURATION_SET_NAME: configurationSetName,
       },
     });
 
@@ -233,6 +242,24 @@ export class TrickleStack extends cdk.Stack {
       environment: apiEnvironment,
     });
 
+    const emailEventsSummaryFunction = new lambda.Function(this, "EmailEventsSummary", {
+      functionName: `trickle-email-events-summary-${stage}`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "api/email-events.summary",
+      code: lambda.Code.fromAsset("../backend/dist"),
+      timeout: cdk.Duration.seconds(60),
+      environment: apiEnvironment,
+    });
+
+    const emailEventsLogsFunction = new lambda.Function(this, "EmailEventsLogs", {
+      functionName: `trickle-email-events-logs-${stage}`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: "api/email-events.logs",
+      code: lambda.Code.fromAsset("../backend/dist"),
+      timeout: cdk.Duration.seconds(60),
+      environment: apiEnvironment,
+    });
+
     // Helper to grant auth parameter store access
     const grantAuthParameterAccess = (fn: lambda.Function) => {
       fn.addToRolePolicy(
@@ -265,6 +292,24 @@ export class TrickleStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["ses:GetAccount"],
         resources: ["*"],
+      })
+    );
+
+    // emailEventsSummaryFunction - needs Parameter Store + CloudWatch Logs read
+    grantAuthParameterAccess(emailEventsSummaryFunction);
+    emailEventsSummaryFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["logs:StartQuery", "logs:GetQueryResults"],
+        resources: ["arn:aws:logs:*:*:log-group:/aws/ses/email-events:*"],
+      })
+    );
+
+    // emailEventsLogsFunction - needs Parameter Store + CloudWatch Logs read
+    grantAuthParameterAccess(emailEventsLogsFunction);
+    emailEventsLogsFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["logs:StartQuery", "logs:GetQueryResults"],
+        resources: ["arn:aws:logs:*:*:log-group:/aws/ses/email-events:*"],
       })
     );
 
@@ -439,6 +484,24 @@ export class TrickleStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "AccountQuotaIntegration",
         accountQuotaFunction
+      ),
+    });
+
+    httpApi.addRoutes({
+      path: "/email/events/summary/{jobId}",
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "EmailEventsSummaryIntegration",
+        emailEventsSummaryFunction
+      ),
+    });
+
+    httpApi.addRoutes({
+      path: "/email/events/logs/{jobId}",
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "EmailEventsLogsIntegration",
+        emailEventsLogsFunction
       ),
     });
 

@@ -262,6 +262,13 @@ async function sendEmail(message: EmailMessage) {
         Headers: [],
       },
     },
+    ConfigurationSetName: process.env.CONFIGURATION_SET_NAME,
+    Tags: [
+      {
+        Name: "jobId",
+        Value: message.jobId,
+      },
+    ],
   };
 
   // Add List-Unsubscribe header (mailto to sender)

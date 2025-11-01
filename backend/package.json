@@ -9,11 +9,12 @@
     "build": "tsc && cp package.json package-lock.json dist/ && npm install --omit=dev --prefix dist/"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.922.0",
     "@aws-sdk/client-dynamodb": "^3.917.0",
     "@aws-sdk/client-s3": "^3.917.0",
     "@aws-sdk/client-scheduler": "^3.917.0",
-    "@aws-sdk/client-ssm": "^3.918.0",
     "@aws-sdk/client-sesv2": "^3.917.0",
+    "@aws-sdk/client-ssm": "^3.918.0",
     "@aws-sdk/lib-dynamodb": "^3.917.0",
     "jsonwebtoken": "^9.0.2"
   },

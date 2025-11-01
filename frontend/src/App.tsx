@@ -3,6 +3,7 @@ import "./App.css";
 import Login from "./components/Login";
 import EmailForm from "./components/EmailForm";
 import JobStatus from "./components/JobStatus";
+import EmailLogs from "./components/EmailLogs";
 import Config from "./components/Config";
 import { getApiUrl } from "./utils/getApiUrl";
 
@@ -10,8 +11,9 @@ const API_URL = getApiUrl();
 
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
-  const [view, setView] = useState<"email" | "status" | "config">("email");
+  const [view, setView] = useState<"email" | "status" | "logs" | "config">("email");
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
 
   useEffect(() => {
     if (token) {
@@ -33,7 +35,7 @@ function App() {
 
   // Update URL when currentJobId changes
   useEffect(() => {
-    if (currentJobId && view === "status") {
+    if (currentJobId && (view === "status" || view === "logs")) {
       const url = new URL(window.location.href);
       url.searchParams.set("jobId", currentJobId);
       window.history.pushState({}, "", url.toString());
@@ -43,6 +45,12 @@ function App() {
       window.history.pushState({}, "", url.toString());
     }
   }, [currentJobId, view]);
+
+  const handleNavigateToLogs = (jobId: string, eventType: string | null) => {
+    setCurrentJobId(jobId);
+    setSelectedEventType(eventType);
+    setView("logs");
+  };
 
   const handleLogout = () => {
     setToken(null);
@@ -63,6 +71,9 @@ function App() {
           </button>
           <button onClick={() => setView("status")} className={view === "status" ? "active" : ""}>
             Job Status
+          </button>
+          <button onClick={() => setView("logs")} className={view === "logs" ? "active" : ""}>
+            Email Logs
           </button>
           <button onClick={() => setView("config")} className={view === "config" ? "active" : ""}>
             Config
@@ -89,6 +100,16 @@ function App() {
             apiUrl={API_URL}
             token={token}
             jobId={currentJobId}
+            onJobIdChange={setCurrentJobId}
+            onNavigateToLogs={handleNavigateToLogs}
+          />
+        )}
+        {view === "logs" && (
+          <EmailLogs
+            apiUrl={API_URL}
+            token={token}
+            jobId={currentJobId}
+            initialEventType={selectedEventType}
             onJobIdChange={setCurrentJobId}
           />
         )}

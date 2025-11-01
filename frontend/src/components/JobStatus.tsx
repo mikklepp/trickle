@@ -15,6 +15,18 @@ interface JobStatusProps {
   token: string;
   jobId: string | null;
   onJobIdChange?: (jobId: string) => void;
+  onNavigateToLogs?: (jobId: string, eventType: string | null) => void;
+}
+
+interface EventMetrics {
+  Send: number;
+  Delivery: number;
+  Bounce: number;
+  Complaint: number;
+  Reject: number;
+  DeliveryDelay: number;
+  Open: number;
+  Click: number;
 }
 
 interface JobData {
@@ -51,13 +63,16 @@ export default function JobStatus({
   token,
   jobId,
   onJobIdChange,
+  onNavigateToLogs,
 }: JobStatusProps) {
   const [searchJobId, setSearchJobId] = useState(jobId || "");
   const [jobData, setJobData] = useState<JobData | null>(null);
+  const [eventMetrics, setEventMetrics] = useState<EventMetrics | null>(null);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
 
   // Fetch jobs list on mount
   useEffect(() => {
@@ -110,6 +125,8 @@ export default function JobStatus({
         if (onJobIdChange) {
           onJobIdChange(id);
         }
+        // Fetch event metrics for this job
+        fetchEventMetrics(id);
       } else {
         setError(data.error || "Failed to fetch job status");
       }
@@ -117,6 +134,30 @@ export default function JobStatus({
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEventMetrics = async (id: string) => {
+    if (!id) return;
+
+    setLoadingMetrics(true);
+    try {
+      const response = await fetch(`${apiUrl}/email/events/summary/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        setEventMetrics(data);
+      } else {
+        console.error("Failed to fetch event metrics:", data.error);
+      }
+    } catch (err) {
+      console.error("Failed to fetch event metrics:", err);
+    } finally {
+      setLoadingMetrics(false);
     }
   };
 
@@ -225,6 +266,112 @@ export default function JobStatus({
               }}
             />
           </div>
+
+          {/* Email Event Metrics */}
+          {eventMetrics && (
+            <div className="email-event-metrics">
+              <h3>Email Events</h3>
+              {loadingMetrics ? (
+                <p>Loading metrics...</p>
+              ) : (
+                <div className="metrics-grid">
+                  {/* Success metrics */}
+                  <div
+                    className="metric-card success"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Send")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Sends</label>
+                    <span>{eventMetrics.Send}</span>
+                  </div>
+                  <div
+                    className="metric-card success"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Delivery")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Delivered</label>
+                    <span>{eventMetrics.Delivery}</span>
+                  </div>
+                  <div
+                    className="metric-card success"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Open")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Opened</label>
+                    <span>{eventMetrics.Open}</span>
+                  </div>
+                  <div
+                    className="metric-card success"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Click")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Clicked</label>
+                    <span>{eventMetrics.Click}</span>
+                  </div>
+
+                  {/* Warning metrics */}
+                  <div
+                    className="metric-card warning"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Bounce")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Bounces</label>
+                    <span>{eventMetrics.Bounce}</span>
+                  </div>
+                  <div
+                    className="metric-card warning"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Complaint")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Complaints</label>
+                    <span>{eventMetrics.Complaint}</span>
+                  </div>
+                  <div
+                    className="metric-card warning"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "Reject")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Rejects</label>
+                    <span>{eventMetrics.Reject}</span>
+                  </div>
+                  <div
+                    className="metric-card warning"
+                    onClick={() =>
+                      onNavigateToLogs?.(jobData.jobId, "DeliveryDelay")
+                    }
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  >
+                    <label>Delivery Delays</label>
+                    <span>{eventMetrics.DeliveryDelay}</span>
+                  </div>
+                </div>
+              )}
+              {onNavigateToLogs && (
+                <button
+                  className="view-all-logs"
+                  onClick={() =>
+                    onNavigateToLogs(jobData.jobId, null)
+                  }
+                >
+                  View All Email Logs
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

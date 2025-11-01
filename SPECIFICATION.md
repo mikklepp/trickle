@@ -44,6 +44,23 @@ Web application for sending bulk emails individually through AWS SES with rate l
   - Failed recipient list
   - SES quota usage
 
+### 6. Email Event Tracking
+- Track email events via SES Configuration Set with CloudWatch integration
+- Event types tracked:
+  - **Send**: Email submission to SES was successful
+  - **Delivery**: Email successfully delivered to recipient's mail server
+  - **Bounce**: Recipient's mail server permanently rejected the email
+  - **Complaint**: Recipient marked email as spam
+  - **Reject**: Email contained virus, delivery not attempted
+  - **DeliveryDelay**: Temporary delivery failure (inbox full, server issue, etc.)
+  - **Open**: Recipient opened the email (with Open Tracking enabled)
+  - **Click**: Recipient clicked a link in the email (with Click Tracking enabled)
+  - **RenderingFailure**: Template rendering error (when using templated emails)
+  - **Subscription**: Recipient updated subscription via List-Unsubscribe
+- Event metrics displayed in Job Status page with clickable event counts
+- Email Logs page shows raw event details with filtering by recipient and event type
+- Deep-linking from Job Status metrics to Email Logs with pre-selected filters
+
 ## Technical Details
 
 ### API Endpoints
@@ -51,8 +68,11 @@ Web application for sending bulk emails individually through AWS SES with rate l
 - `GET /senders` - List verified SES identities
 - `POST /email/send` - Submit email job
 - `GET /email/status/:jobId` - Check send progress
+- `GET /email/events/summary/:jobId` - Get aggregated email event counts by type
+- `GET /email/events/logs/:jobId` - Get raw email events with optional filters (recipient, eventType)
 - `GET /config` - Get rate limit settings
 - `PUT /config` - Update rate limit settings
+- `GET /account/quota` - Get SES sending quota and limits
 
 ### Data Model
 ```
