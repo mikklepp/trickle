@@ -7,6 +7,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
+import * as ses from "aws-cdk-lib/aws-ses";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
@@ -53,11 +54,40 @@ export class TrickleStack extends cdk.Stack {
 
     // ========== SES Configuration Set ==========
     // Configuration set for tracking email events via CloudWatch
-    // Note: CloudWatch event publishing must be configured via AWS Console or CLI:
-    // aws sesv2 put-configuration-set-event-destination-details --configuration-set-name trickle-{stage} \
-    //   --event-type SEND DELIVERY BOUNCE COMPLAINT REJECT DELIVERY_DELAY OPEN CLICK \
-    //   --event-destination-properties CloudWatchDestination={}
     const configurationSetName = `trickle-${stage}`;
+
+    // Create SES Configuration Set
+    const configSet = new ses.CfnConfigurationSet(this, "EmailConfigurationSet", {
+      name: configurationSetName,
+    });
+
+    // Add CloudWatch event destination for email event tracking
+    new ses.CfnConfigurationSetEventDestination(this, "CloudWatchEventDestination", {
+      configurationSetName: configSet.ref,
+      eventDestination: {
+        name: `${configurationSetName}-cloudwatch`,
+        enabled: true,
+        matchingEventTypes: [
+          "send",
+          "delivery",
+          "bounce",
+          "complaint",
+          "reject",
+          "deliveryDelay",
+          "open",
+          "click",
+        ],
+        cloudWatchDestination: {
+          dimensionConfigurations: [
+            {
+              defaultDimensionValue: configurationSetName,
+              dimensionName: "ses:configuration-set",
+              dimensionValueSource: "messageTag",
+            },
+          ],
+        },
+      },
+    });
 
     // ========== S3 Bucket for Attachments ==========
     const attachmentsBucket = new s3.Bucket(this, "AttachmentsBucket", {
