@@ -234,6 +234,61 @@ export default function JobStatus({
                 <span>{formatDate(jobData.completedAt)}</span>
               </div>
             )}
+
+            {/* Email Event Metrics as Stat Cards */}
+            {eventMetrics && !loadingMetrics && (
+              <>
+                <div
+                  className="stat stat-large"
+                  onClick={() => onNavigateToLogs?.(jobData.jobId, "Delivery")}
+                  style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  title="Click to view delivery events"
+                >
+                  <label>Delivered</label>
+                  <span className="success">{eventMetrics.Delivery}</span>
+                </div>
+                <div
+                  className="stat stat-large"
+                  onClick={() => onNavigateToLogs?.(jobData.jobId, "Bounce")}
+                  style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  title="Click to view bounce events"
+                >
+                  <label>Bounces</label>
+                  <span className="error">{eventMetrics.Bounce}</span>
+                </div>
+                <div
+                  className="stat stat-large"
+                  onClick={() => onNavigateToLogs?.(jobData.jobId, "Complaint")}
+                  style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  title="Click to view complaint events"
+                >
+                  <label>Complaints</label>
+                  <span className="error">{eventMetrics.Complaint}</span>
+                </div>
+                {eventMetrics.Open > 0 && (
+                  <div
+                    className="stat stat-large"
+                    onClick={() => onNavigateToLogs?.(jobData.jobId, "Open")}
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                    title="Click to view open events"
+                  >
+                    <label>Opened</label>
+                    <span className="success">{eventMetrics.Open}</span>
+                  </div>
+                )}
+                {eventMetrics.Click > 0 && (
+                  <div
+                    className="stat stat-large"
+                    onClick={() => onNavigateToLogs?.(jobData.jobId, "Click")}
+                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                    title="Click to view click events"
+                  >
+                    <label>Clicked</label>
+                    <span className="success">{eventMetrics.Click}</span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {jobData.lastError && (
@@ -267,110 +322,12 @@ export default function JobStatus({
             />
           </div>
 
-          {/* Email Event Metrics */}
-          {eventMetrics && (
-            <div className="email-event-metrics">
-              <h3>Email Events</h3>
-              {loadingMetrics ? (
-                <p>Loading metrics...</p>
-              ) : (
-                <div className="metrics-grid">
-                  {/* Success metrics */}
-                  <div
-                    className="metric-card success"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Send")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Sends</label>
-                    <span>{eventMetrics.Send}</span>
-                  </div>
-                  <div
-                    className="metric-card success"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Delivery")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Delivered</label>
-                    <span>{eventMetrics.Delivery}</span>
-                  </div>
-                  <div
-                    className="metric-card success"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Open")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Opened</label>
-                    <span>{eventMetrics.Open}</span>
-                  </div>
-                  <div
-                    className="metric-card success"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Click")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Clicked</label>
-                    <span>{eventMetrics.Click}</span>
-                  </div>
-
-                  {/* Warning metrics */}
-                  <div
-                    className="metric-card warning"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Bounce")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Bounces</label>
-                    <span>{eventMetrics.Bounce}</span>
-                  </div>
-                  <div
-                    className="metric-card warning"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Complaint")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Complaints</label>
-                    <span>{eventMetrics.Complaint}</span>
-                  </div>
-                  <div
-                    className="metric-card warning"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "Reject")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Rejects</label>
-                    <span>{eventMetrics.Reject}</span>
-                  </div>
-                  <div
-                    className="metric-card warning"
-                    onClick={() =>
-                      onNavigateToLogs?.(jobData.jobId, "DeliveryDelay")
-                    }
-                    style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
-                  >
-                    <label>Delivery Delays</label>
-                    <span>{eventMetrics.DeliveryDelay}</span>
-                  </div>
-                </div>
-              )}
-              {onNavigateToLogs && (
-                <button
-                  className="view-all-logs"
-                  onClick={() =>
-                    onNavigateToLogs(jobData.jobId, null)
-                  }
-                >
-                  View All Email Logs
-                </button>
-              )}
-            </div>
+          {onNavigateToLogs && (
+            <form className="search-form" style={{ marginTop: "20px" }}>
+              <button type="button" onClick={() => onNavigateToLogs(jobData.jobId, null)}>
+                View All Email Logs
+              </button>
+            </form>
           )}
         </div>
       )}

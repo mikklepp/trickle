@@ -161,10 +161,6 @@ export default function EmailLogs({
     }
   };
 
-  const clearEventTypeFilter = () => {
-    setSelectedEventType(null);
-  };
-
   return (
     <div className="email-logs">
       <h2>Email Logs</h2>
@@ -185,9 +181,9 @@ export default function EmailLogs({
 
       {/* Filters Section */}
       {jobId && (
-        <div className="filters-section">
-          <div className="filter-group">
-            <label>Event Type:</label>
+        <div className="email-logs-filters">
+          <div className="form-group">
+            <label>Event Type</label>
             <select
               value={selectedEventType || ""}
               onChange={(e) => setSelectedEventType(e.target.value || null)}
@@ -199,15 +195,10 @@ export default function EmailLogs({
                 </option>
               ))}
             </select>
-            {selectedEventType && (
-              <button className="clear-filter" onClick={clearEventTypeFilter}>
-                Clear
-              </button>
-            )}
           </div>
 
-          <div className="filter-group">
-            <label>Recipient (filter):</label>
+          <div className="form-group">
+            <label>Recipient Email</label>
             <input
               type="email"
               value={recipientFilter}
