@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  Deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
           cache: npm
 
       - name: Install dependencies
@@ -31,14 +31,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: "eu-north-1"
-
-      - name: Build and validate
-        run: npm run build
-        env:
-          CDK_STAGE: production
-          AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
-          AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
-          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
       - name: Deploy to AWS
         run: npm run deploy
