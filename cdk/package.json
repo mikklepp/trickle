@@ -10,7 +10,7 @@
     "cdk": "cdk",
     "diff": "cdk diff --all",
     "synth": "cdk synth",
-    "deploy": "cdk deploy --all",
+    "deploy": "cdk deploy --all --require-approval=never",
     "destroy": "cdk destroy --all"
   },
   "devDependencies": {
