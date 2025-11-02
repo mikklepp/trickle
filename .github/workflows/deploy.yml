@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: "20.x"
           cache: npm
 
       - name: Install dependencies
@@ -30,7 +30,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: 'eu-north-1'
+          aws-region: "eu-north-1"
 
       - name: Build and validate
         run: npm run build
