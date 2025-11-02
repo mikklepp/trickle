@@ -1,5 +1,30 @@
 # TODO - Remaining Issues
 
+## Documentation (2025-11-02)
+- ✅ **README.md Rewrite** (2025-11-02)
+  - Removed all SST references
+  - Updated for CDK-based infrastructure
+  - Added npm workspaces monorepo structure
+  - Added quick start and deployment stages sections
+  - Added documentation index with cross-references
+
+- ✅ **SPECIFICATION.md Updates** (2025-11-02)
+  - Updated architecture: SQS → EventBridge Scheduler
+  - Updated API Gateway: v1 → v2
+  - Updated frontend framework references
+  - Added cross-references to other docs
+
+- ✅ **Documentation Consolidation** (2025-11-02)
+  - Deleted SECRETS.md (completely outdated SST-based secrets)
+  - Deleted DEPLOYMENT.md (redundant with CDK_MIGRATION.md)
+  - Added cross-references between remaining docs
+  - Verified CDK_MIGRATION.md facts and examples
+
+- ✅ **Documentation Index** (2025-11-02)
+  - README.md now has clear documentation table
+  - All docs have "Related Documentation" sections
+  - Clear navigation between docs for new developers
+
 ## Completed
 - ✅ **Input Validation** (2025-10-26)
   - Email format validation (RFC 5322) for sender and recipients

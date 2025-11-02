@@ -4,12 +4,12 @@
 Web application for sending bulk emails individually through AWS SES with rate limiting and attachment support.
 
 ## Architecture
-- **Frontend**: Single-page web application (React/Vue)
-- **Backend**: Serverless API (AWS Lambda + API Gateway)
-- **Queue**: AWS SQS for email job processing
+- **Frontend**: Single-page web application (React)
+- **Backend**: Serverless API (AWS Lambda + API Gateway v2)
+- **Scheduling**: AWS EventBridge Scheduler for rate-limited email delivery
 - **Storage**: S3 for temporary attachment storage
 - **Database**: DynamoDB for tracking send status and configuration
-- **Email Service**: AWS SES
+- **Email Service**: AWS SES v2 API
 
 ## Core Features
 
@@ -81,12 +81,12 @@ Recipients: jobId, email, status, sentAt, error
 Config: userId, rateLimit, maxAttachmentSize
 ```
 
-### Queue Processing
-- Lambda triggered by SQS
-- Batch size: 1
-- Configurable delay between messages
-- DLQ for failed sends
-- Retry logic with exponential backoff
+### Email Delivery Scheduling
+- Lambda triggered by EventBridge Scheduler (replaces SQS)
+- Separate schedule per recipient for rate limiting
+- Configurable delay between email sends (default: 1 email/minute)
+- Dead Letter Queue (DLQ) for failed sends
+- Retry logic with exponential backoff (1s, 2s, 4s)
 
 ## Security
 - Input validation and sanitization
@@ -102,3 +102,10 @@ Config: userId, rateLimit, maxAttachmentSize
 - Max attachment size: 10MB per email
 - SES sending limits compliance
 - Temporary attachment cleanup (S3 lifecycle policy)
+
+## Related Documentation
+
+- **[README.md](./README.md)** - Project overview and quick start
+- **[CDK_MIGRATION.md](./CDK_MIGRATION.md)** - Deployment and infrastructure guide
+- **[.github/CICD_SETUP.md](./.github/CICD_SETUP.md)** - GitHub Actions CI/CD setup
+- **[cdk/README.md](./cdk/README.md)** - CDK commands and structure

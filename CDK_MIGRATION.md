@@ -447,6 +447,13 @@ CDK vs SST costs are nearly identical since they deploy the same AWS resources:
 4. Add integration tests
 5. Set up staging environment
 
+## Related Documentation
+
+- **[README.md](./README.md)** - Project overview and quick start
+- **[SPECIFICATION.md](./SPECIFICATION.md)** - Application architecture and features
+- **[.github/CICD_SETUP.md](./.github/CICD_SETUP.md)** - GitHub Actions CI/CD setup
+- **[cdk/README.md](./cdk/README.md)** - CDK-specific commands and structure
+
 ## Support
 
 For issues with:
