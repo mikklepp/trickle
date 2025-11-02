@@ -90,10 +90,21 @@ export default function JobStatus({
   const [loading, setLoading] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(true);
 
   // Fetch jobs list on mount
   useEffect(() => {
     fetchJobs();
+  }, []);
+
+  // Track page visibility to pause polling when tab is hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   useEffect(() => {
@@ -102,9 +113,9 @@ export default function JobStatus({
     }
   }, [jobId]);
 
-  // Auto-refresh while job is pending
+  // Auto-refresh while job is pending (only when page is visible)
   useEffect(() => {
-    if (!jobId || !jobData || jobData.status !== "pending") {
+    if (!jobId || !jobData || jobData.status !== "pending" || !isPageVisible) {
       return;
     }
 
@@ -113,7 +124,7 @@ export default function JobStatus({
     }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [jobId, jobData]);
+  }, [jobId, jobData, isPageVisible]);
 
   const fetchJobs = async () => {
     setLoadingJobs(true);
