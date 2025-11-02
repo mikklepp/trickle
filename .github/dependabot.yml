@@ -8,7 +8,7 @@ updates:
       day: monday
       time: "03:00"
     reviewers:
-      - mikko
+      - mikklepp
     labels:
       - dependencies
       - npm
@@ -26,7 +26,7 @@ updates:
       day: monday
       time: "04:00"
     reviewers:
-      - mikko
+      - mikklepp
     labels:
       - dependencies
       - github-actions
