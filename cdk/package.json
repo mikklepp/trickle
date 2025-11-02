@@ -5,12 +5,12 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "tsc && cdk synth",
     "watch": "tsc -w",
     "cdk": "cdk",
     "diff": "cdk diff --all",
     "synth": "cdk synth",
-    "deploy": "cdk synth && cdk deploy --all",
+    "deploy": "cdk deploy --all",
     "destroy": "cdk destroy --all"
   },
   "devDependencies": {
