@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces",
-    "build": "npm run build --workspaces && npm run format:check",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend && npm run build --workspace=cdk && npm run format:check",
     "deploy": "npm run build && npm run deploy --workspace=cdk",
     "dev": "npm-run-all --parallel backend:watch frontend:watch cdk:watch",
     "dev:logs": "npm-run-all --parallel dev logs:follow",
