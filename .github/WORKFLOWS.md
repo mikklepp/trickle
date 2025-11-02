@@ -44,6 +44,13 @@ This directory contains GitHub-specific configurations for the Trickle project.
   - GitHub Actions versions
 - **Auto-merge**: Disabled (requires review)
 
+#### `WORKFLOWS.md`
+- **Purpose**: Overview of GitHub workflows and configuration
+- **Includes**:
+  - Workflow descriptions (PR validation, deployment)
+  - Configuration file documentation
+  - Quick start and troubleshooting
+
 #### `CICD_SETUP.md`
 - **Purpose**: Step-by-step setup guide for CI/CD
 - **Includes**:

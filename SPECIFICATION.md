@@ -106,6 +106,6 @@ Config: userId, rateLimit, maxAttachmentSize
 ## Related Documentation
 
 - **[README.md](./README.md)** - Project overview and quick start
-- **[CDK_MIGRATION.md](./CDK_MIGRATION.md)** - Deployment and infrastructure guide
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deployment and infrastructure guide
 - **[.github/CICD_SETUP.md](./.github/CICD_SETUP.md)** - GitHub Actions CI/CD setup
 - **[cdk/README.md](./cdk/README.md)** - CDK commands and structure

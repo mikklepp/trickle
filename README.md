@@ -20,7 +20,7 @@ npm run deploy
 
 Your app will be available at `https://{username}.trickle.qed.fi`
 
-See [CDK_MIGRATION.md](./CDK_MIGRATION.md) for detailed deployment instructions.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
 
 ## Project Structure
 
@@ -69,9 +69,10 @@ trickle/
 
 | Document | Purpose |
 |----------|---------|
-| [CDK_MIGRATION.md](./CDK_MIGRATION.md) | **→ START HERE** - Comprehensive deployment & infrastructure guide |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | **→ START HERE** - Comprehensive deployment & infrastructure guide |
 | [SPECIFICATION.md](./SPECIFICATION.md) | Architecture, features, API endpoints, data models |
 | [.github/CICD_SETUP.md](./.github/CICD_SETUP.md) | GitHub Actions CI/CD setup with AWS OIDC |
+| [.github/WORKFLOWS.md](./.github/WORKFLOWS.md) | GitHub workflow documentation |
 | [cdk/README.md](./cdk/README.md) | CDK-specific commands and structure |
 
 ## Common Commands
@@ -143,14 +144,14 @@ Each stage has:
 
 ## Next Steps
 
-1. **First time?** Read [CDK_MIGRATION.md](./CDK_MIGRATION.md)
+1. **First time?** Read [DEPLOYMENT.md](./DEPLOYMENT.md)
 2. **Want to deploy?** Set `AUTH_USERNAME` and `AUTH_PASSWORD` env vars, then run `npm run deploy`
 3. **Want to contribute?** Run `npm run dev` for watch mode
 4. **Need CI/CD?** Follow [.github/CICD_SETUP.md](./.github/CICD_SETUP.md)
 
 ## Support & Issues
 
-- **Infrastructure questions?** Check [CDK_MIGRATION.md](./CDK_MIGRATION.md) troubleshooting section
+- **Infrastructure questions?** Check [DEPLOYMENT.md](./DEPLOYMENT.md) troubleshooting section
 - **Feature questions?** See [SPECIFICATION.md](./SPECIFICATION.md)
 - **CI/CD issues?** See [.github/CICD_SETUP.md](./.github/CICD_SETUP.md)
 

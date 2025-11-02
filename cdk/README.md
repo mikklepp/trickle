@@ -16,7 +16,7 @@ export AWS_REGION=eu-west-1
 npm run deploy
 ```
 
-See the main [CDK_MIGRATION.md](../CDK_MIGRATION.md) for complete documentation.
+See the main [DEPLOYMENT.md](../DEPLOYMENT.md) for complete documentation.
 
 ## Stage Configuration
 
@@ -72,4 +72,4 @@ cdk/
 
 ## Documentation
 
-See [CDK_MIGRATION.md](../CDK_MIGRATION.md) for complete documentation.
+See [DEPLOYMENT.md](../DEPLOYMENT.md) for complete documentation.
