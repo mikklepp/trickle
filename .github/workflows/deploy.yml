@@ -36,6 +36,7 @@ jobs:
         run: npm run deploy
         env:
           CDK_STAGE: production
+          CDK_REGION: ${{ secrets.CDK_REGION }}
           AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
           AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
