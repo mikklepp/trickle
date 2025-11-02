@@ -222,7 +222,7 @@ export default function JobStatus({
       {jobData && (
         <div className="job-details">
           {/* Progress Bar at Top - with time estimates */}
-          {jobData.status === "pending" && (
+          {jobData.status === "pending" &&
             (() => {
               const eta = calculateETA({
                 totalRecipients: jobData.totalRecipients,
@@ -255,15 +255,15 @@ export default function JobStatus({
                   </div>
                 </div>
               );
-            })()
-          )}
+            })()}
 
           {/* Completed Job Progress */}
           {jobData.status !== "pending" && (
             <div className="progress-section completed">
               <div className="progress-header">
                 <span className="progress-label">
-                  {jobData.status === "completed" ? "✅ Completed" : "❌ Failed"}: {jobData.sent}/{jobData.totalRecipients} sent
+                  {jobData.status === "completed" ? "✅ Completed" : "❌ Failed"}: {jobData.sent}/
+                  {jobData.totalRecipients} sent
                 </span>
               </div>
               <div className="progress-bar">
@@ -278,49 +278,57 @@ export default function JobStatus({
           )}
 
           {/* Action Required Section */}
-          {jobData.metrics && (jobData.metrics.hardBounceCount > 0 || jobData.metrics.complaintCount > 0) && (
-            <div className="action-required-section">
-              <h3>⚠️ Action Required</h3>
-              {jobData.metrics.hardBounceCount > 0 && (
-                <div className="action-item critical">
-                  <div className="action-header">
-                    <span className="action-icon">🔴</span>
-                    <span className="action-title">Remove Hard Bounced Addresses ({jobData.metrics.hardBounceCount})</span>
+          {jobData.metrics &&
+            (jobData.metrics.hardBounceCount > 0 || jobData.metrics.complaintCount > 0) && (
+              <div className="action-required-section">
+                <h3>⚠️ Action Required</h3>
+                {jobData.metrics.hardBounceCount > 0 && (
+                  <div className="action-item critical">
+                    <div className="action-header">
+                      <span className="action-icon">🔴</span>
+                      <span className="action-title">
+                        Remove Hard Bounced Addresses ({jobData.metrics.hardBounceCount})
+                      </span>
+                    </div>
+                    <p className="action-description">
+                      {jobData.metrics.hardBounceCount} email address(es) permanently failed
+                      delivery. These should be removed from your list immediately to protect your
+                      sender reputation.
+                    </p>
+                    {onNavigateToLogs && (
+                      <button
+                        className="action-button"
+                        onClick={() => onNavigateToLogs(jobData.jobId, "Bounce")}
+                      >
+                        View Hard Bounces
+                      </button>
+                    )}
                   </div>
-                  <p className="action-description">
-                    {jobData.metrics.hardBounceCount} email address(es) permanently failed delivery. These should be removed from your list immediately to protect your sender reputation.
-                  </p>
-                  {onNavigateToLogs && (
-                    <button
-                      className="action-button"
-                      onClick={() => onNavigateToLogs(jobData.jobId, "Bounce")}
-                    >
-                      View Hard Bounces
-                    </button>
-                  )}
-                </div>
-              )}
-              {jobData.metrics.complaintCount > 0 && (
-                <div className="action-item critical">
-                  <div className="action-header">
-                    <span className="action-icon">🚨</span>
-                    <span className="action-title">Investigate Complaints ({jobData.metrics.complaintCount})</span>
+                )}
+                {jobData.metrics.complaintCount > 0 && (
+                  <div className="action-item critical">
+                    <div className="action-header">
+                      <span className="action-icon">🚨</span>
+                      <span className="action-title">
+                        Investigate Complaints ({jobData.metrics.complaintCount})
+                      </span>
+                    </div>
+                    <p className="action-description">
+                      {jobData.metrics.complaintCount} recipient(s) marked your email as spam.
+                      Remove these addresses and review your email content and permission practices.
+                    </p>
+                    {onNavigateToLogs && (
+                      <button
+                        className="action-button"
+                        onClick={() => onNavigateToLogs(jobData.jobId, "Complaint")}
+                      >
+                        View Complaints
+                      </button>
+                    )}
                   </div>
-                  <p className="action-description">
-                    {jobData.metrics.complaintCount} recipient(s) marked your email as spam. Remove these addresses and review your email content and permission practices.
-                  </p>
-                  {onNavigateToLogs && (
-                    <button
-                      className="action-button"
-                      onClick={() => onNavigateToLogs(jobData.jobId, "Complaint")}
-                    >
-                      View Complaints
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
 
           {/* Warnings from metrics */}
           {jobData.metrics && jobData.metrics.warnings && jobData.metrics.warnings.length > 0 && (
@@ -370,20 +378,34 @@ export default function JobStatus({
             {/* Email Event Metrics from job.metrics */}
             {jobData.metrics && (
               <>
-                <div className={`stat stat-large ${jobData.metrics.hardBounceRate > 0.05 ? "critical" : jobData.metrics.hardBounceRate > 0.02 ? "warning" : ""}`}>
+                <div
+                  className={`stat stat-large ${jobData.metrics.hardBounceRate > 0.05 ? "critical" : jobData.metrics.hardBounceRate > 0.02 ? "warning" : ""}`}
+                >
                   <label>Hard Bounces</label>
-                  <span className={jobData.metrics.hardBounceRate > 0.05 ? "error" : jobData.metrics.hardBounceRate > 0.02 ? "error" : ""}>
-                    {jobData.metrics.hardBounceCount} ({(jobData.metrics.hardBounceRate * 100).toFixed(1)}%)
+                  <span
+                    className={
+                      jobData.metrics.hardBounceRate > 0.05
+                        ? "error"
+                        : jobData.metrics.hardBounceRate > 0.02
+                          ? "error"
+                          : ""
+                    }
+                  >
+                    {jobData.metrics.hardBounceCount} (
+                    {(jobData.metrics.hardBounceRate * 100).toFixed(1)}%)
                   </span>
                 </div>
                 <div className="stat stat-large">
                   <label>Soft Bounces</label>
                   <span>{jobData.metrics.softBounceCount}</span>
                 </div>
-                <div className={`stat stat-large ${jobData.metrics.complaintRate > 0.003 ? "critical" : jobData.metrics.complaintRate > 0.001 ? "warning" : ""}`}>
+                <div
+                  className={`stat stat-large ${jobData.metrics.complaintRate > 0.003 ? "critical" : jobData.metrics.complaintRate > 0.001 ? "warning" : ""}`}
+                >
                   <label>Complaints</label>
                   <span className={jobData.metrics.complaintRate > 0.001 ? "error" : ""}>
-                    {jobData.metrics.complaintCount} ({(jobData.metrics.complaintRate * 100).toFixed(2)}%)
+                    {jobData.metrics.complaintCount} (
+                    {(jobData.metrics.complaintRate * 100).toFixed(2)}%)
                   </span>
                 </div>
               </>

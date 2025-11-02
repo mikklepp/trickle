@@ -17,7 +17,7 @@ const DEFAULT_CONFIG: ConfigData = {
   maxAttachmentSize: 10485760,
   headers: {
     "List-ID": '"Monthly Newsletter" <newsletter.sarvastonvenekerho.fi>',
-    "Precedence": "bulk",
+    Precedence: "bulk",
   },
 };
 
@@ -130,9 +130,7 @@ export default function Config({ apiUrl, token }: ConfigProps) {
             min="0"
             max="26214400"
             value={config.maxAttachmentSize}
-            onChange={(e) =>
-              setConfig({ ...config, maxAttachmentSize: parseInt(e.target.value) })
-            }
+            onChange={(e) => setConfig({ ...config, maxAttachmentSize: parseInt(e.target.value) })}
             required
           />
           <small>Maximum attachment size in bytes (max 25MB)</small>

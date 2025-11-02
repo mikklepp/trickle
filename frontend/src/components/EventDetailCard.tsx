@@ -241,13 +241,18 @@ export default function EventDetailCard({ event }: EventDetailCardProps) {
 
       {/* Recommendation */}
       {event.requiresAction && (
-        <div style={{ marginBottom: "0.75rem", padding: "0.5rem", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: "4px" }}>
+        <div
+          style={{
+            marginBottom: "0.75rem",
+            padding: "0.5rem",
+            backgroundColor: "rgba(0,0,0,0.05)",
+            borderRadius: "4px",
+          }}
+        >
           <div style={{ fontSize: "0.9rem", marginBottom: "0.25rem", fontWeight: "500" }}>
             ✅ Recommended Action:
           </div>
-          <div style={{ fontSize: "0.9rem", lineHeight: "1.5" }}>
-            {event.recommendation}
-          </div>
+          <div style={{ fontSize: "0.9rem", lineHeight: "1.5" }}>{event.recommendation}</div>
         </div>
       )}
 

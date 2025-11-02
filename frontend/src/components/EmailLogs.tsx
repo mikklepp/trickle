@@ -191,7 +191,6 @@ export default function EmailLogs({
     }
   };
 
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchJobId) {
@@ -278,7 +277,9 @@ export default function EmailLogs({
             <div className="metrics-summary">
               <div className="metric-item">
                 <span className="metric-label">Hard Bounces:</span>
-                <span className={`metric-value ${jobMetrics.hardBounceRate > 0.05 ? "critical" : jobMetrics.hardBounceRate > 0.02 ? "warning" : ""}`}>
+                <span
+                  className={`metric-value ${jobMetrics.hardBounceRate > 0.05 ? "critical" : jobMetrics.hardBounceRate > 0.02 ? "warning" : ""}`}
+                >
                   {jobMetrics.hardBounceCount} ({(jobMetrics.hardBounceRate * 100).toFixed(1)}%)
                 </span>
               </div>
@@ -288,7 +289,9 @@ export default function EmailLogs({
               </div>
               <div className="metric-item">
                 <span className="metric-label">Complaints:</span>
-                <span className={`metric-value ${jobMetrics.complaintRate > 0.003 ? "critical" : jobMetrics.complaintRate > 0.001 ? "warning" : ""}`}>
+                <span
+                  className={`metric-value ${jobMetrics.complaintRate > 0.003 ? "critical" : jobMetrics.complaintRate > 0.001 ? "warning" : ""}`}
+                >
                   {jobMetrics.complaintCount} ({(jobMetrics.complaintRate * 100).toFixed(2)}%)
                 </span>
               </div>
@@ -307,10 +310,7 @@ export default function EmailLogs({
             <>
               <div className="events-cards">
                 {events.map((event, index) => (
-                  <EventDetailCard
-                    key={`${index}-${event.timestamp}`}
-                    event={event as any}
-                  />
+                  <EventDetailCard key={`${index}-${event.timestamp}`} event={event as any} />
                 ))}
               </div>
               {events.length > 0 && nextToken && (

@@ -103,9 +103,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
         const parsed = JSON.parse(recent);
         // Handle backward compatibility: convert old string[] format to new RecentSender[] format
         const senders: RecentSender[] = Array.isArray(parsed)
-          ? parsed.map((item) =>
-              typeof item === "string" ? { email: item } : item
-            )
+          ? parsed.map((item) => (typeof item === "string" ? { email: item } : item))
           : [];
         setRecentSenders(senders);
         if (senders.length > 0 && !sender) {
@@ -122,10 +120,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
 
   const saveRecentSender = (email: string, name: string = "") => {
     const newSender: RecentSender = { email, name: name || undefined };
-    const recent = [
-      newSender,
-      ...recentSenders.filter((s) => s.email !== email),
-    ].slice(0, 5);
+    const recent = [newSender, ...recentSenders.filter((s) => s.email !== email)].slice(0, 5);
     setRecentSenders(recent);
     localStorage.setItem("recentSenders", JSON.stringify(recent));
     console.log("Saved recent senders:", recent);
@@ -212,9 +207,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     for (let file of Array.from(files)) {
       // Validate file type
       if (!Object.keys(ALLOWED_FILE_TYPES).includes(file.type)) {
-        setError(
-          `${file.name} has unsupported file type. Allowed: PDF, JPEG, PNG, GIF, WebP`
-        );
+        setError(`${file.name} has unsupported file type. Allowed: PDF, JPEG, PNG, GIF, WebP`);
         continue;
       }
 
@@ -392,10 +385,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
     );
   }
 
-  const allSuggestions = [
-    ...recentSenders.map((s) => s.email),
-    ...verifiedEmails,
-  ].filter((email, index, self) => self.indexOf(email) === index);
+  const allSuggestions = [...recentSenders.map((s) => s.email), ...verifiedEmails].filter(
+    (email, index, self) => self.indexOf(email) === index
+  );
 
   return (
     <div className="email-form">
@@ -410,10 +402,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
           {!quota.productionAccessEnabled && (
             <>
               {" "}
-              •{" "}
-              <span style={{ color: "orange" }}>
-                ⚠️ Sandbox mode
-              </span>
+              • <span style={{ color: "orange" }}>⚠️ Sandbox mode</span>
             </>
           )}
         </div>
@@ -451,7 +440,9 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
                     setSenderName(recentSender.name || "");
                   }}
                 >
-                  {recentSender.name ? `${recentSender.name} <${recentSender.email}>` : recentSender.email}
+                  {recentSender.name
+                    ? `${recentSender.name} <${recentSender.email}>`
+                    : recentSender.email}
                 </button>
               ))}
             </div>
@@ -483,9 +474,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
             autoCapitalize="off"
             autoCorrect="off"
           />
-          <small>
-            How the sender name will appear in recipients' inboxes
-          </small>
+          <small>How the sender name will appear in recipients' inboxes</small>
         </div>
 
         <div className="form-group">

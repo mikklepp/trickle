@@ -4,14 +4,14 @@
   "description": "Trickle CDK Infrastructure",
   "private": true,
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "build": "tsc",
     "watch": "tsc -w",
-    "typecheck": "tsc --noEmit",
     "cdk": "cdk",
     "diff": "cdk diff --all",
-    "deploy": "cdk deploy --all",
-    "destroy": "cdk destroy --all",
-    "synth": "cdk synth"
+    "synth": "cdk synth",
+    "deploy": "cdk synth && cdk deploy --all",
+    "destroy": "cdk destroy --all"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
