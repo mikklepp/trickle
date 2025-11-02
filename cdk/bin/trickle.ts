@@ -12,7 +12,11 @@ async function main() {
   const stage = process.env.CDK_STAGE || process.env.USER || os.userInfo().username || "dev";
 
   // Region: from env var or default to us-east-1
-  const region = process.env.AWS_REGION || process.env.CDK_DEFAULT_REGION || "us-east-1";
+  const region =
+    process.env.CDK_REGION ||
+    process.env.AWS_REGION ||
+    process.env.CDK_DEFAULT_REGION ||
+    "us-east-1";
 
   // Account: from env var or get from AWS STS
   let account = process.env.CDK_DEFAULT_ACCOUNT || process.env.AWS_ACCOUNT_ID;
