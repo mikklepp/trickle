@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { calculateETA } from "../utils/calculateETA";
 
-// Auto-refresh interval in milliseconds (only while job is pending)
-// Refreshes roughly at the cadence emails are being sent (aligned with rateLimit)
-const AUTO_REFRESH_INTERVAL_MS = 5000; // 5 seconds - user will see updates at ~rateLimit frequency
+// Auto-refresh interval in milliseconds (while page is visible)
+// Collects SES events that arrive during and after job completion
+const AUTO_REFRESH_INTERVAL_MS = 5000; // 5 seconds
 
 /**
  * Formats an ISO date string in local time
@@ -113,9 +113,9 @@ export default function JobStatus({
     }
   }, [jobId]);
 
-  // Auto-refresh while job is pending (only when page is visible)
+  // Auto-refresh while page is visible (to collect events even after job completion)
   useEffect(() => {
-    if (!jobId || !jobData || jobData.status !== "pending" || !isPageVisible) {
+    if (!jobId || !jobData || !isPageVisible) {
       return;
     }
 
