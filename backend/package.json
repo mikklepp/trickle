@@ -16,7 +16,7 @@
     "@aws-sdk/client-scheduler": "^3.927.0",
     "@aws-sdk/client-sesv2": "^3.917.0",
     "@aws-sdk/client-ssm": "^3.918.0",
-    "@aws-sdk/lib-dynamodb": "^3.917.0",
+    "@aws-sdk/lib-dynamodb": "^3.948.0",
     "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
