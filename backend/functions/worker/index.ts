@@ -3,6 +3,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SchedulerClient, DeleteScheduleCommand } from "@aws-sdk/client-scheduler";
+import { htmlToPlainText } from "../shared/html-to-text.js";
 
 // AWS SDK automatically detects the region from Lambda execution context
 const ses = new SESv2Client({});
@@ -254,6 +255,10 @@ async function sendEmail(message: EmailMessage) {
           Charset: "UTF-8",
         },
         Body: {
+          Text: {
+            Data: htmlToPlainText(message.content) || " ",
+            Charset: "UTF-8",
+          },
           Html: {
             Data: message.content,
             Charset: "UTF-8",
