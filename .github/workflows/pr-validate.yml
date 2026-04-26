@@ -37,3 +37,6 @@ jobs:
         run: npm run build
         env:
           CDK_REGION: ${{ secrets.CDK_REGION }}
+          AUTH_USERNAME: pr-validate
+          AUTH_PASSWORD: pr-validate
+          AUTH_SECRET: pr-validate-not-a-real-secret
