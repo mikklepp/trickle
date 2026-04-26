@@ -63,21 +63,12 @@ export async function handler(event: EmailMessage) {
     if (updateResult.Attributes) {
       const { sent, failed, totalRecipients } = updateResult.Attributes;
       if (sent + failed >= totalRecipients) {
-        await dynamo.send(
-          new UpdateCommand({
-            TableName: process.env.JOBS_TABLE_NAME!,
-            Key: { jobId: event.jobId },
-            UpdateExpression: "SET #status = :status, completedAt = :completedAt",
-            ExpressionAttributeNames: {
-              "#status": "status",
-            },
-            ExpressionAttributeValues: {
-              ":status": failed > 0 ? "completed_with_errors" : "completed",
-              ":completedAt": new Date().toISOString(),
-            },
-          })
+        await markJobComplete(
+          event.jobId,
+          failed > 0 ? "completed_with_errors" : "completed",
+          sent,
+          failed
         );
-        console.log(`Job ${event.jobId} completed: ${sent} sent, ${failed} failed`);
       }
     }
 
@@ -126,25 +117,41 @@ export async function handler(event: EmailMessage) {
     if (updateResult.Attributes) {
       const { sent, failed, totalRecipients } = updateResult.Attributes;
       if (sent + failed >= totalRecipients) {
-        await dynamo.send(
-          new UpdateCommand({
-            TableName: process.env.JOBS_TABLE_NAME!,
-            Key: { jobId: event.jobId },
-            UpdateExpression: "SET #status = :status, completedAt = :completedAt",
-            ExpressionAttributeNames: {
-              "#status": "status",
-            },
-            ExpressionAttributeValues: {
-              ":status": "completed_with_errors",
-              ":completedAt": new Date().toISOString(),
-            },
-          })
-        );
-        console.log(`Job ${event.jobId} completed with errors: ${sent} sent, ${failed} failed`);
+        await markJobComplete(event.jobId, "completed_with_errors", sent, failed);
       }
     }
 
     throw error; // Re-throw for EventBridge retry
+  }
+}
+
+async function markJobComplete(
+  jobId: string,
+  status: string,
+  sent: number,
+  failed: number
+): Promise<void> {
+  try {
+    await dynamo.send(
+      new UpdateCommand({
+        TableName: process.env.JOBS_TABLE_NAME!,
+        Key: { jobId },
+        UpdateExpression: "SET #status = :status, completedAt = :completedAt",
+        ConditionExpression: "attribute_not_exists(completedAt)",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":status": status,
+          ":completedAt": new Date().toISOString(),
+        },
+      })
+    );
+    console.log(`Job ${jobId} marked ${status}: ${sent} sent, ${failed} failed`);
+  } catch (err: any) {
+    if (err?.name === "ConditionalCheckFailedException") {
+      // Another worker already marked the job complete; benign race.
+      return;
+    }
+    throw err;
   }
 }
 
