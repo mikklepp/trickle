@@ -10,13 +10,13 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^3.927.0",
-    "@aws-sdk/client-dynamodb": "^3.917.0",
-    "@aws-sdk/client-s3": "^3.948.0",
-    "@aws-sdk/client-scheduler": "^3.927.0",
-    "@aws-sdk/client-sesv2": "^3.950.0",
-    "@aws-sdk/client-ssm": "^3.918.0",
-    "@aws-sdk/lib-dynamodb": "^3.948.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1037.0",
+    "@aws-sdk/client-dynamodb": "^3.1037.0",
+    "@aws-sdk/client-s3": "^3.1037.0",
+    "@aws-sdk/client-scheduler": "^3.1037.0",
+    "@aws-sdk/client-sesv2": "^3.1037.0",
+    "@aws-sdk/client-ssm": "^3.1037.0",
+    "@aws-sdk/lib-dynamodb": "^3.1037.0",
     "jsonwebtoken": "^9.0.3",
     "node-html-parser": "^7.1.0"
   },
