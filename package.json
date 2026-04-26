@@ -1,6 +1,6 @@
 {
   "name": "trickle",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Trickle email service - monorepo",
   "private": true,
   "workspaces": [
