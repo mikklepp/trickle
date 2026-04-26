@@ -33,18 +33,6 @@ export async function computeJobMetrics(
   totalRecipients: number = 0
 ): Promise<JobMetrics> {
   try {
-    // Query all events for this job (no pagination, to compute metrics)
-    const allEventsResult = await dynamodb.send(
-      new QueryCommand({
-        TableName: tableName,
-        KeyConditionExpression: "jobId = :jobId",
-        ExpressionAttributeValues: {
-          ":jobId": { S: jobId },
-        },
-        Select: "ALL_ATTRIBUTES",
-      })
-    );
-
     let hardBounceCount = 0;
     let softBounceCount = 0;
     let softBouncePermanentCount = 0;
@@ -53,10 +41,24 @@ export async function computeJobMetrics(
     let totalEventCount = 0;
     const bounceSubtypeCounts: Record<string, number> = {};
 
-    if (allEventsResult.Items) {
-      totalEventCount = allEventsResult.Items.length;
+    // Paginate through all events for this job. A single Query is capped at
+    // 1MB; without looping, jobs with many events would silently under-count.
+    let lastEvalKey: Record<string, any> | undefined = undefined;
+    do {
+      const page = await dynamodb.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "jobId = :jobId",
+          ExpressionAttributeValues: {
+            ":jobId": { S: jobId },
+          },
+          Select: "ALL_ATTRIBUTES",
+          ExclusiveStartKey: lastEvalKey,
+        })
+      );
 
-      for (const item of allEventsResult.Items) {
+      for (const item of page.Items ?? []) {
+        totalEventCount++;
         const unmarshalled = unmarshall(item) as any;
         const eventType = unmarshalled.eventType;
 
@@ -82,7 +84,9 @@ export async function computeJobMetrics(
           rejectCount++;
         }
       }
-    }
+
+      lastEvalKey = page.LastEvaluatedKey;
+    } while (lastEvalKey);
 
     const hardBounceRate = totalRecipients > 0 ? hardBounceCount / totalRecipients : 0;
     const softBounceRate = totalRecipients > 0 ? softBounceCount / totalRecipients : 0;

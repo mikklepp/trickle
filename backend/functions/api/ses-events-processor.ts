@@ -84,69 +84,108 @@ interface SESEvent {
   };
 }
 
-/**
- * Extract recipient email from SES event
- */
-function getRecipient(event: SESEvent): string {
-  switch (event.eventType) {
-    case "Bounce":
-      return event.bounce?.bouncedRecipients?.[0]?.emailAddress || "unknown";
-    case "Complaint":
-      return event.complaint?.complainedRecipients?.[0]?.emailAddress || "unknown";
-    case "Delivery":
-      return event.delivery?.recipients?.[0] || "unknown";
-    default:
-      return event.mail.destination[0] || "unknown";
-  }
+interface PerRecipientEntry {
+  recipient: string;
+  details: Record<string, any>;
 }
 
 /**
- * Parse SES event and extract event-specific details
+ * Build per-recipient entries for an SES event. Bounce, Complaint, and
+ * Delivery events can each carry multiple recipients; we emit one row
+ * per recipient so none are lost.
  */
-function getEventDetails(event: SESEvent): Record<string, any> {
-  const details: Record<string, any> = {};
-
+function getPerRecipientEntries(event: SESEvent): PerRecipientEntry[] {
   switch (event.eventType) {
-    case "Bounce":
-      details.bounceType = event.bounce?.bounceType;
-      details.bounceSubType = event.bounce?.bounceSubType;
-      if (event.bounce?.bouncedRecipients?.[0]) {
-        details.bounceStatus = event.bounce.bouncedRecipients[0].status;
-        details.diagnosticCode = event.bounce.bouncedRecipients[0].diagnosticCode;
+    case "Bounce": {
+      const recipients = event.bounce?.bouncedRecipients ?? [];
+      if (recipients.length === 0) {
+        return [{ recipient: "unknown", details: bounceDetailsBase(event) }];
       }
-      break;
+      return recipients.map((r) => ({
+        recipient: r.emailAddress || "unknown",
+        details: {
+          ...bounceDetailsBase(event),
+          bounceStatus: r.status,
+          diagnosticCode: r.diagnosticCode,
+        },
+      }));
+    }
 
-    case "Complaint":
-      details.complainedRecipientCount = event.complaint?.complainedRecipients?.length || 0;
-      break;
+    case "Complaint": {
+      const recipients = event.complaint?.complainedRecipients ?? [];
+      if (recipients.length === 0) {
+        return [{ recipient: "unknown", details: { complainedRecipientCount: 0 } }];
+      }
+      return recipients.map((r) => ({
+        recipient: r.emailAddress || "unknown",
+        details: { complainedRecipientCount: recipients.length },
+      }));
+    }
 
-    case "Delivery":
-      details.processingTimeMillis = event.delivery?.processingTimeMillis;
-      details.smtpResponse = event.delivery?.smtpResponse;
-      details.remoteMtaIp = event.delivery?.remoteMtaIp;
-      break;
+    case "Delivery": {
+      const recipients = event.delivery?.recipients ?? [];
+      const details = {
+        processingTimeMillis: event.delivery?.processingTimeMillis,
+        smtpResponse: event.delivery?.smtpResponse,
+        remoteMtaIp: event.delivery?.remoteMtaIp,
+      };
+      if (recipients.length === 0) {
+        return [{ recipient: "unknown", details }];
+      }
+      return recipients.map((r) => ({ recipient: r || "unknown", details }));
+    }
 
     case "Open":
-      details.userAgent = event.open?.userAgent;
-      break;
+      return [
+        {
+          recipient: event.mail.destination[0] || "unknown",
+          details: { userAgent: event.open?.userAgent },
+        },
+      ];
 
     case "Click":
-      details.link = event.click?.link;
-      details.userAgent = event.click?.userAgent;
-      break;
+      return [
+        {
+          recipient: event.mail.destination[0] || "unknown",
+          details: {
+            link: event.click?.link,
+            userAgent: event.click?.userAgent,
+          },
+        },
+      ];
 
     case "Reject":
-      details.reason = event.reject?.reason;
-      details.reasonCode = event.reject?.reasonCode;
-      break;
+      return [
+        {
+          recipient: event.mail.destination[0] || "unknown",
+          details: {
+            reason: event.reject?.reason,
+            reasonCode: event.reject?.reasonCode,
+          },
+        },
+      ];
 
     case "DeliveryDelay":
-      details.delayType = event.deliveryDelay?.delayType;
-      details.processingTimeMillis = event.deliveryDelay?.processingTimeMillis;
-      break;
-  }
+      return [
+        {
+          recipient: event.mail.destination[0] || "unknown",
+          details: {
+            delayType: event.deliveryDelay?.delayType,
+            processingTimeMillis: event.deliveryDelay?.processingTimeMillis,
+          },
+        },
+      ];
 
-  return details;
+    default:
+      return [{ recipient: event.mail.destination[0] || "unknown", details: {} }];
+  }
+}
+
+function bounceDetailsBase(event: SESEvent): Record<string, any> {
+  return {
+    bounceType: event.bounce?.bounceType,
+    bounceSubType: event.bounce?.bounceSubType,
+  };
 }
 
 /**
@@ -171,33 +210,39 @@ function extractJobId(event: SESEvent): string {
 }
 
 /**
- * Write SES event to DynamoDB
+ * Write one DynamoDB row per recipient carried in the SES event.
+ * Bounce/Complaint/Delivery can each carry multiple recipients in a single
+ * SES notification. The table's sort key is `timestamp`, so we offset
+ * each row's timestamp by the recipient index to keep keys unique.
  */
 async function writeEventToDynamoDB(event: SESEvent): Promise<void> {
   const jobId = extractJobId(event);
-  const recipient = getRecipient(event);
-  const timestamp = Date.now();
+  const baseTimestamp = Date.now();
   const ttl = Math.floor(Date.now() / 1000) + TTL_DAYS * 86400;
+  const entries = getPerRecipientEntries(event);
 
-  const item = {
-    jobId,
-    timestamp,
-    recipient,
-    eventType: event.eventType,
-    messageId: event.mail.messageId,
-    source: event.mail.source,
-    ttl,
-    details: getEventDetails(event),
-  };
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const item = {
+      jobId,
+      timestamp: baseTimestamp + i,
+      recipient: entry.recipient,
+      eventType: event.eventType,
+      messageId: event.mail.messageId,
+      source: event.mail.source,
+      ttl,
+      details: entry.details,
+    };
 
-  await dynamodb.send(
-    new PutItemCommand({
-      TableName: tableName,
-      Item: marshall(item),
-    })
-  );
+    await dynamodb.send(
+      new PutItemCommand({
+        TableName: tableName,
+        Item: marshall(item, { removeUndefinedValues: true }),
+      })
+    );
 
-  console.log(`Wrote ${event.eventType} event for ${recipient} (job: ${jobId})`);
+    console.log(`Wrote ${event.eventType} event for ${entry.recipient} (job: ${jobId})`);
+  }
 }
 
 /**
@@ -207,7 +252,7 @@ async function processSESEvent(message: string): Promise<void> {
   try {
     const event = JSON.parse(message) as SESEvent;
     const jobId = extractJobId(event);
-    console.log(`Processing ${event.eventType} event for ${getRecipient(event)} (jobId: ${jobId})`);
+    console.log(`Processing ${event.eventType} event (jobId: ${jobId})`);
     await writeEventToDynamoDB(event);
   } catch (error) {
     console.error("Error processing SES event:", error);

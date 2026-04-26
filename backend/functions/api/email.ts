@@ -28,6 +28,16 @@ const ses = new SESv2Client({});
 const MAX_RECIPIENTS = 1000; // Maximum recipients per job
 const MAX_SUBJECT_LENGTH = 998; // RFC 5322 limit
 const MAX_CONTENT_SIZE = 300000; // 300KB limit for DynamoDB
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB, mirrors frontend cap
+const MAX_FILENAME_LENGTH = 200;
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
 
 // Email validation regex (RFC 5322 simplified)
 const EMAIL_REGEX =
@@ -118,6 +128,72 @@ function validateSubject(subject: string): string | null {
   return null;
 }
 
+/**
+ * Sanitize an attachment filename for use as an S3 key segment.
+ * Strips any path component, control chars, and odd unicode; collapses
+ * leading dots so a malicious "../foo" cannot escape the job prefix.
+ */
+function sanitizeAttachmentFilename(rawName: string): string {
+  const basename = rawName.split(/[\\/]/).pop() || "";
+  // Strip control chars and the small set of S3-unfriendly chars
+  let cleaned = basename.replace(/[\x00-\x1f\x7f]/g, "").replace(/[\r\n]/g, "");
+  cleaned = cleaned.replace(/^\.+/, "");
+  return cleaned.slice(0, MAX_FILENAME_LENGTH);
+}
+
+interface AttachmentInput {
+  filename?: string;
+  content?: string;
+  contentType?: string;
+}
+
+function validateAttachments(
+  attachments: unknown
+):
+  | { error: string }
+  | { sanitized: Array<{ filename: string; content: string; contentType: string }> } {
+  if (!Array.isArray(attachments)) {
+    return { error: "Attachments must be an array" };
+  }
+  if (attachments.length > MAX_ATTACHMENTS) {
+    return { error: `Too many attachments (max ${MAX_ATTACHMENTS})` };
+  }
+
+  const sanitized: Array<{ filename: string; content: string; contentType: string }> = [];
+  let totalSize = 0;
+
+  for (const att of attachments as AttachmentInput[]) {
+    if (!att || typeof att !== "object") {
+      return { error: "Invalid attachment entry" };
+    }
+    const filename = sanitizeAttachmentFilename(String(att.filename || ""));
+    if (!filename) {
+      return { error: "Attachment filename is required" };
+    }
+    const contentType = String(att.contentType || "");
+    if (!ALLOWED_ATTACHMENT_TYPES.has(contentType)) {
+      return { error: `Unsupported attachment type: ${contentType || "(missing)"}` };
+    }
+    if (typeof att.content !== "string" || att.content.length === 0) {
+      return { error: "Attachment content is required (base64)" };
+    }
+    // base64 decoded length without actually decoding: 3/4 of input minus padding
+    const padding = att.content.endsWith("==") ? 2 : att.content.endsWith("=") ? 1 : 0;
+    const decodedSize = Math.floor((att.content.length * 3) / 4) - padding;
+    if (decodedSize > MAX_ATTACHMENT_SIZE) {
+      return { error: `Attachment "${filename}" exceeds max size (${MAX_ATTACHMENT_SIZE} bytes)` };
+    }
+    totalSize += decodedSize;
+    sanitized.push({ filename, content: att.content, contentType });
+  }
+
+  if (totalSize > MAX_ATTACHMENTS * MAX_ATTACHMENT_SIZE) {
+    return { error: "Total attachment size exceeds limit" };
+  }
+
+  return { sanitized };
+}
+
 function validateContent(content: string): string | null {
   if (!content || content.trim().length === 0) {
     return "Content is required";
@@ -174,10 +250,32 @@ export async function send(event: any, context: any) {
       };
     }
 
-    console.log("Received email send request:", JSON.stringify(event.body).substring(0, 500));
     const body = JSON.parse(event.body || "{}");
-    const { sender, recipients, subject, content, attachments = [], headers = {} } = body;
-    console.log("Parsed body - attachments count:", attachments.length);
+    const {
+      sender,
+      recipients,
+      subject,
+      content,
+      attachments: rawAttachments = [],
+      headers = {},
+    } = body;
+    console.log("Received email send request:", {
+      senderPresent: !!sender,
+      recipientsLength: typeof recipients === "string" ? recipients.length : 0,
+      subjectLength: typeof subject === "string" ? subject.length : 0,
+      contentLength: typeof content === "string" ? content.length : 0,
+      attachmentsCount: Array.isArray(rawAttachments) ? rawAttachments.length : 0,
+      headersCount: headers && typeof headers === "object" ? Object.keys(headers).length : 0,
+    });
+
+    const attachmentsResult = validateAttachments(rawAttachments);
+    if ("error" in attachmentsResult) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: attachmentsResult.error }),
+      };
+    }
+    const attachments = attachmentsResult.sanitized;
 
     // Extract account ID and region from current Lambda ARN
     // Format: arn:aws:lambda:region:account-id:function:function-name
@@ -372,14 +470,12 @@ export async function send(event: any, context: any) {
       // Upload attachments to S3
       for (const attachment of attachments) {
         const key = `${jobId}/${attachment.filename}`;
-        const contentType = attachment.contentType || "application/octet-stream";
-
         await s3.send(
           new PutObjectCommand({
             Bucket: process.env.ATTACHMENTS_BUCKET_NAME!,
             Key: key,
             Body: Buffer.from(attachment.content, "base64"),
-            ContentType: contentType,
+            ContentType: attachment.contentType,
           })
         );
         attachmentKeys.push(key);
