@@ -277,6 +277,16 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       .filter((r) => r.length > 0).length;
   }, [recipients]);
 
+  const bodyWordCount = useMemo(() => {
+    if (!content) return 0;
+    const text = content
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&[a-z]+;/gi, " ");
+    const words = text.match(/\S+/g);
+    return words ? words.length : 0;
+  }, [content]);
+
   const estimatedTime = useMemo(() => {
     if (recipientCount === 0) return null;
 
@@ -538,6 +548,13 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
               ],
             }}
           />
+          {bodyWordCount > 0 && bodyWordCount < 20 && (
+            <small className="hint" style={{ color: "orange" }}>
+              ⚠️ Short body ({bodyWordCount} word{bodyWordCount === 1 ? "" : "s"}) may be flagged as
+              spam by recipients (HTML_IMAGE_ONLY rules trigger when the open-tracking pixel
+              dominates a sparse body). Aim for at least 20 words.
+            </small>
+          )}
         </div>
 
         <div className="form-group">
