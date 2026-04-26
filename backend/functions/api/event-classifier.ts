@@ -24,39 +24,58 @@ export interface EmailEvent {
   details?: Record<string, unknown>;
 }
 
+// Transient subtypes that won't resolve themselves on retry — sender must act.
+const EFFECTIVELY_PERMANENT_TRANSIENT_SUBTYPES = new Set([
+  "MessageTooLarge",
+  "AttachmentRejected",
+  "ContentRejected",
+  "MailFromDomainNotVerified",
+]);
+
+function appendDiagnostic(text: string, diagnosticCode?: string): string {
+  if (!diagnosticCode) return text;
+  const trimmed = diagnosticCode.trim();
+  if (!trimmed) return text;
+  const truncated = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
+  return `${text} (${truncated})`;
+}
+
 /**
- * Classify a bounce event by type and subtype
+ * Classify a bounce event by type, subtype, and SMTP enhanced status code.
+ *
+ * SES marks a bounce as "Transient" whenever the receiving server returned
+ * something it could plausibly retry, but several signals make a bounce
+ * effectively permanent:
+ *   - RFC 3463 enhanced status codes starting with "5." are permanent
+ *     failures regardless of SES's bounceType label.
+ *   - Specific Transient subtypes (MessageTooLarge, AttachmentRejected,
+ *     ContentRejected, MailFromDomainNotVerified) won't resolve without
+ *     sender intervention.
  */
 export function classifyBounce(
   bounceType?: string,
   bounceSubType?: string,
-  diagnosticCode?: string
+  diagnosticCode?: string,
+  bounceStatus?: string
 ): EventClassification {
+  const statusIsPermanent = typeof bounceStatus === "string" && /^5\./.test(bounceStatus.trim());
+
   // Hard/Permanent bounces - CRITICAL
   if (bounceType === "Permanent") {
-    let interpretation = "Email address does not exist or domain is invalid (permanent failure)";
-    let details = "";
-
+    let interpretation: string;
     switch (bounceSubType) {
       case "NoEmail":
         interpretation = "No email address associated with this recipient";
-        details = "The recipient address does not exist in the system.";
         break;
       case "Suppressed":
         interpretation = "Address is on your SES suppression list";
-        details = "SES has suppressed this address due to previous bounce/complaint.";
         break;
       case "OnAccountSuppressionList":
         interpretation = "Address is on your account suppression list";
-        details = "You have previously suppressed this address.";
         break;
       case "General":
       default:
         interpretation = "Permanent bounce - invalid or non-existent address";
-        details = "The receiving server rejected the email permanently.";
-        if (diagnosticCode) {
-          details += ` (${diagnosticCode})`;
-        }
         break;
     }
 
@@ -64,7 +83,7 @@ export function classifyBounce(
       severity: "critical",
       category: "hard",
       icon: "🔴",
-      interpretation: interpretation,
+      interpretation: appendDiagnostic(interpretation, diagnosticCode),
       recommendation:
         "🛑 Remove this address from your mailing list immediately. Sending to invalid addresses damages your sender reputation. " +
         "Best practice: Maintain hard bounce rate below 2%.",
@@ -72,53 +91,76 @@ export function classifyBounce(
     };
   }
 
-  // Soft/Transient bounces - WARNING
+  // Soft/Transient bounces
   if (bounceType === "Transient") {
-    let interpretation = "Temporary delivery issue";
-    let details = "";
+    let interpretation: string;
+    let recommendation: string;
+    let requiresAction = false;
 
     switch (bounceSubType) {
       case "MailboxFull":
         interpretation = "Recipient's mailbox is full";
-        details = "The email was rejected because the recipient's inbox is full.";
+        recommendation =
+          "Usually transient — mailboxes get cleared. If this address keeps reporting MailboxFull for 10+ sends, treat it as abandoned and remove it.";
         break;
       case "MessageTooLarge":
         interpretation = "Email size exceeds recipient server limits";
-        details = "The message or attachments are too large for the recipient.";
+        recommendation =
+          "Won't fix itself — reduce message or attachment size, or host attachments and link to them. Recipient server hard-limit, retry will fail.";
+        requiresAction = true;
         break;
       case "ContentRejected":
-        interpretation = "Email content was rejected";
-        details = "The recipient server rejected the message content (possibly spam filter).";
+        interpretation = "Email content was rejected by recipient server";
+        recommendation =
+          "Won't fix itself — recipient's content/spam filter blocked this message. Review subject, links, HTML, and authentication (SPF/DKIM/DMARC). Retrying the same content will fail.";
+        requiresAction = true;
         break;
       case "AttachmentRejected":
-        interpretation = "Attachment type not accepted";
-        details = "The recipient server does not accept the attachment type.";
+        interpretation = "Attachment type not accepted by recipient server";
+        recommendation =
+          "Won't fix itself — change or remove the attachment type. Many providers block executables, archives, or macro-enabled documents.";
+        requiresAction = true;
         break;
       case "ServiceUnavailable":
         interpretation = "Recipient server temporarily unavailable";
-        details = "The receiving server is temporarily down or overloaded.";
+        recommendation =
+          "Genuinely transient — receiving server is down or overloaded. SES will not retry; resending later is usually fine.";
         break;
       case "MailFromDomainNotVerified":
         interpretation = "Sending domain not verified with recipient";
-        details = "Your domain has not been verified with the receiving server.";
+        recommendation =
+          "Won't fix itself — recipient requires SPF/DKIM/DMARC alignment. Verify your domain's DNS authentication; retrying without changes will fail.";
+        requiresAction = true;
         break;
       case "General":
       default:
         interpretation = "Temporary delivery issue";
-        details = "The receiving server temporarily rejected the email.";
+        recommendation =
+          "SES classifies this as transient. Check the diagnostic code; if the SMTP status starts with 5.x.x it is effectively permanent.";
         break;
     }
 
+    // If the SMTP enhanced status code says permanent, override.
+    if (statusIsPermanent) {
+      interpretation = `Effectively permanent (SMTP ${bounceStatus}): ${interpretation}`;
+      recommendation =
+        "🛑 Receiving server returned a 5.x.x permanent code despite SES marking this transient — retrying will fail. Remove this address or fix the underlying issue (size/content/auth) before resending.";
+      requiresAction = true;
+    } else if (
+      !requiresAction &&
+      bounceSubType &&
+      EFFECTIVELY_PERMANENT_TRANSIENT_SUBTYPES.has(bounceSubType)
+    ) {
+      requiresAction = true;
+    }
+
     return {
-      severity: "warning",
+      severity: requiresAction ? "warning" : "info",
       category: "soft",
-      icon: "⚠️",
-      interpretation: interpretation,
-      recommendation:
-        "This is usually temporary. " +
-        "Monitor if this address continues to soft bounce - after 10+ consecutive failures, consider removing it. " +
-        "For MailboxFull or ServerDown issues, retry is often successful.",
-      requiresAction: false,
+      icon: requiresAction ? "⚠️" : "💤",
+      interpretation: appendDiagnostic(interpretation, diagnosticCode),
+      recommendation,
+      requiresAction,
     };
   }
 
@@ -127,7 +169,10 @@ export function classifyBounce(
     severity: "info",
     category: "unknown",
     icon: "ℹ️",
-    interpretation: "Bounce event (type: " + (bounceType || "unknown") + ")",
+    interpretation: appendDiagnostic(
+      "Bounce event (type: " + (bounceType || "unknown") + ")",
+      diagnosticCode
+    ),
     recommendation: "Review the bounce details for more information.",
     requiresAction: false,
   };
@@ -270,7 +315,8 @@ export function classifyEvent(event: EmailEvent): EventClassification {
       return classifyBounce(
         details.bounceType as string,
         details.bounceSubType as string,
-        details.diagnosticCode as string
+        details.diagnosticCode as string,
+        details.bounceStatus as string
       );
     case "Complaint":
       return classifyComplaint(details.complainedRecipientCount as number);

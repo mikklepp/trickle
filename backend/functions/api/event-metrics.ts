@@ -12,11 +12,16 @@ const tableName = process.env.EMAIL_EVENTS_TABLE_NAME || "trickle-email-events";
 export interface JobMetrics {
   hardBounceCount: number;
   softBounceCount: number;
+  /** Soft bounces whose SMTP enhanced status is 5.x.x — effectively permanent. */
+  softBouncePermanentCount: number;
   complaintCount: number;
   rejectCount: number;
   totalEventCount: number;
   hardBounceRate: number;
+  softBounceRate: number;
   complaintRate: number;
+  /** Counts of bounce subtypes (e.g. MailboxFull, ContentRejected) for visibility. */
+  bounceSubtypeCounts: Record<string, number>;
   warnings: string[];
 }
 
@@ -42,9 +47,11 @@ export async function computeJobMetrics(
 
     let hardBounceCount = 0;
     let softBounceCount = 0;
+    let softBouncePermanentCount = 0;
     let complaintCount = 0;
     let rejectCount = 0;
     let totalEventCount = 0;
+    const bounceSubtypeCounts: Record<string, number> = {};
 
     if (allEventsResult.Items) {
       totalEventCount = allEventsResult.Items.length;
@@ -55,10 +62,19 @@ export async function computeJobMetrics(
 
         if (eventType === "Bounce") {
           const bounceType = unmarshalled.details?.bounceType;
+          const subType = unmarshalled.details?.bounceSubType || "Unknown";
+          const status = unmarshalled.details?.bounceStatus;
           if (bounceType === "Permanent") {
             hardBounceCount++;
+            bounceSubtypeCounts[`Permanent:${subType}`] =
+              (bounceSubtypeCounts[`Permanent:${subType}`] || 0) + 1;
           } else if (bounceType === "Transient") {
             softBounceCount++;
+            bounceSubtypeCounts[`Transient:${subType}`] =
+              (bounceSubtypeCounts[`Transient:${subType}`] || 0) + 1;
+            if (typeof status === "string" && /^5\./.test(status.trim())) {
+              softBouncePermanentCount++;
+            }
           }
         } else if (eventType === "Complaint") {
           complaintCount++;
@@ -69,6 +85,7 @@ export async function computeJobMetrics(
     }
 
     const hardBounceRate = totalRecipients > 0 ? hardBounceCount / totalRecipients : 0;
+    const softBounceRate = totalRecipients > 0 ? softBounceCount / totalRecipients : 0;
     const complaintRate = totalRecipients > 0 ? complaintCount / totalRecipients : 0;
 
     const warnings: string[] = [];
@@ -79,6 +96,18 @@ export async function computeJobMetrics(
     } else if (hardBounceRate > 0.02) {
       warnings.push(
         `Warning: Hard bounce rate is ${(hardBounceRate * 100).toFixed(1)}% (target <2%)`
+      );
+    }
+
+    if (softBouncePermanentCount > 0) {
+      warnings.push(
+        `⚠️ ${softBouncePermanentCount} soft bounce${softBouncePermanentCount === 1 ? "" : "s"} returned a 5.x.x SMTP code — effectively permanent. Review the soft bounce list.`
+      );
+    }
+
+    if (softBounceRate > 0.05) {
+      warnings.push(
+        `⚠️ Soft bounce rate is ${(softBounceRate * 100).toFixed(1)}% — investigate recurring transient failures.`
       );
     }
 
@@ -93,11 +122,14 @@ export async function computeJobMetrics(
     return {
       hardBounceCount,
       softBounceCount,
+      softBouncePermanentCount,
       complaintCount,
       rejectCount,
       totalEventCount,
       hardBounceRate,
+      softBounceRate,
       complaintRate,
+      bounceSubtypeCounts,
       warnings,
     };
   } catch (error) {
@@ -105,11 +137,14 @@ export async function computeJobMetrics(
     return {
       hardBounceCount: 0,
       softBounceCount: 0,
+      softBouncePermanentCount: 0,
       complaintCount: 0,
       rejectCount: 0,
       totalEventCount: 0,
       hardBounceRate: 0,
+      softBounceRate: 0,
       complaintRate: 0,
+      bounceSubtypeCounts: {},
       warnings: [],
     };
   }

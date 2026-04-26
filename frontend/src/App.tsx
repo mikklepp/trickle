@@ -14,6 +14,9 @@ function App() {
   const [view, setView] = useState<"email" | "status" | "logs" | "config">("email");
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
+  const [selectedBounceCategory, setSelectedBounceCategory] = useState<"hard" | "soft" | null>(
+    null
+  );
 
   useEffect(() => {
     if (token) {
@@ -46,9 +49,14 @@ function App() {
     }
   }, [currentJobId, view]);
 
-  const handleNavigateToLogs = (jobId: string, eventType: string | null) => {
+  const handleNavigateToLogs = (
+    jobId: string,
+    eventType: string | null,
+    bounceCategory: "hard" | "soft" | null = null
+  ) => {
     setCurrentJobId(jobId);
     setSelectedEventType(eventType);
+    setSelectedBounceCategory(bounceCategory);
     setView("logs");
   };
 
@@ -110,6 +118,7 @@ function App() {
             token={token}
             jobId={currentJobId}
             initialEventType={selectedEventType}
+            initialBounceCategory={selectedBounceCategory}
             onJobIdChange={setCurrentJobId}
           />
         )}

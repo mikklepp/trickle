@@ -20,7 +20,11 @@ interface JobStatusProps {
   token: string;
   jobId: string | null;
   onJobIdChange?: (jobId: string) => void;
-  onNavigateToLogs?: (jobId: string, eventType: string | null) => void;
+  onNavigateToLogs?: (
+    jobId: string,
+    eventType: string | null,
+    bounceCategory?: "hard" | "soft" | null
+  ) => void;
 }
 
 interface EventMetrics {
@@ -37,11 +41,14 @@ interface EventMetrics {
 interface JobMetrics {
   hardBounceCount: number;
   softBounceCount: number;
+  softBouncePermanentCount?: number;
   complaintCount: number;
   rejectCount: number;
   totalEventCount: number;
   hardBounceRate: number;
+  softBounceRate?: number;
   complaintRate: number;
+  bounceSubtypeCounts?: Record<string, number>;
   warnings: string[];
 }
 
@@ -391,6 +398,9 @@ export default function JobStatus({
               <>
                 <div
                   className={`stat stat-large ${jobData.metrics.hardBounceRate > 0.05 ? "critical" : jobData.metrics.hardBounceRate > 0.02 ? "warning" : ""}`}
+                  onClick={() => onNavigateToLogs?.(jobData.jobId, "Bounce", "hard")}
+                  style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  title="Click to view hard bounces"
                 >
                   <label>Hard Bounces</label>
                   <span
@@ -406,9 +416,20 @@ export default function JobStatus({
                     {(jobData.metrics.hardBounceRate * 100).toFixed(1)}%)
                   </span>
                 </div>
-                <div className="stat stat-large">
+                <div
+                  className={`stat stat-large ${jobData.metrics.softBouncePermanentCount && jobData.metrics.softBouncePermanentCount > 0 ? "warning" : ""}`}
+                  onClick={() => onNavigateToLogs?.(jobData.jobId, "Bounce", "soft")}
+                  style={{ cursor: onNavigateToLogs ? "pointer" : "default" }}
+                  title="Click to view soft bounces"
+                >
                   <label>Soft Bounces</label>
-                  <span>{jobData.metrics.softBounceCount}</span>
+                  <span>
+                    {jobData.metrics.softBounceCount}
+                    {jobData.metrics.softBouncePermanentCount &&
+                    jobData.metrics.softBouncePermanentCount > 0
+                      ? ` (${jobData.metrics.softBouncePermanentCount} effectively permanent)`
+                      : ""}
+                  </span>
                 </div>
                 <div
                   className={`stat stat-large ${jobData.metrics.complaintRate > 0.003 ? "critical" : jobData.metrics.complaintRate > 0.001 ? "warning" : ""}`}
