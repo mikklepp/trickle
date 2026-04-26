@@ -138,6 +138,9 @@ export async function logs(event: any) {
     const eventType = event.queryStringParameters?.eventType || null;
     const recipientFilter = event.queryStringParameters?.recipient || null;
     const nextTokenParam = event.queryStringParameters?.nextToken || null;
+    const bounceCategoryRaw = event.queryStringParameters?.bounceCategory || null;
+    const bounceCategory: "hard" | "soft" | null =
+      bounceCategoryRaw === "hard" || bounceCategoryRaw === "soft" ? bounceCategoryRaw : null;
 
     // Page size
     let limit = parseInt(event.queryStringParameters?.limit || "100", 10);
@@ -197,6 +200,14 @@ export async function logs(event: any) {
           continue;
         }
 
+        // Apply bounce category filter (hard = Permanent, soft = Transient)
+        if (bounceCategory) {
+          if (email.eventType !== "Bounce") continue;
+          const bt = (email.details as any)?.bounceType;
+          if (bounceCategory === "hard" && bt !== "Permanent") continue;
+          if (bounceCategory === "soft" && bt !== "Transient") continue;
+        }
+
         // Apply recipient filter if specified
         if (
           recipientFilter &&
@@ -234,6 +245,7 @@ export async function logs(event: any) {
         filters: {
           eventType: eventType || null,
           recipient: recipientFilter || null,
+          bounceCategory,
         },
         jobMetrics,
       }),

@@ -29,11 +29,14 @@ interface EmailEvent {
 interface JobMetrics {
   hardBounceCount: number;
   softBounceCount: number;
+  softBouncePermanentCount?: number;
   complaintCount: number;
   rejectCount: number;
   totalEventCount: number;
   hardBounceRate: number;
+  softBounceRate?: number;
   complaintRate: number;
+  bounceSubtypeCounts?: Record<string, number>;
   warnings: string[];
 }
 
@@ -44,6 +47,7 @@ interface EmailLogsResponse {
   filters?: {
     eventType: string | null;
     recipient: string | null;
+    bounceCategory?: "hard" | "soft" | null;
   };
   jobMetrics?: JobMetrics;
   error?: string;
@@ -65,6 +69,7 @@ interface EmailLogsProps {
   token: string;
   jobId: string | null;
   initialEventType?: string | null;
+  initialBounceCategory?: "hard" | "soft" | null;
   onJobIdChange?: (jobId: string) => void;
 }
 
@@ -73,6 +78,7 @@ export default function EmailLogs({
   token,
   jobId,
   initialEventType,
+  initialBounceCategory,
   onJobIdChange,
 }: EmailLogsProps) {
   const [searchJobId, setSearchJobId] = useState(jobId || "");
@@ -88,7 +94,17 @@ export default function EmailLogs({
   const [selectedEventType, setSelectedEventType] = useState<string | null>(
     initialEventType || null
   );
+  const [bounceCategory, setBounceCategory] = useState<"hard" | "soft" | null>(
+    initialBounceCategory || null
+  );
   const [recipientFilter, setRecipientFilter] = useState("");
+
+  // If user picks a non-Bounce event type, drop the bounce subfilter.
+  useEffect(() => {
+    if (selectedEventType !== "Bounce" && bounceCategory !== null) {
+      setBounceCategory(null);
+    }
+  }, [selectedEventType]);
 
   const eventTypes = [
     "Send",
@@ -111,9 +127,9 @@ export default function EmailLogs({
     if (jobId) {
       setNextToken(null);
       setEvents([]);
-      fetchLogs(jobId, selectedEventType, recipientFilter);
+      fetchLogs(jobId, selectedEventType, recipientFilter, bounceCategory);
     }
-  }, [jobId, selectedEventType, recipientFilter]);
+  }, [jobId, selectedEventType, recipientFilter, bounceCategory]);
 
   const fetchJobs = async () => {
     setLoadingJobs(true);
@@ -139,6 +155,7 @@ export default function EmailLogs({
     id: string,
     eventType: string | null,
     recipient: string,
+    category: "hard" | "soft" | null,
     pageToken?: string | null,
     append: boolean = false,
     totalRecipients?: number
@@ -152,6 +169,7 @@ export default function EmailLogs({
       const params = new URLSearchParams();
       if (eventType) params.append("eventType", eventType);
       if (recipient) params.append("recipient", recipient);
+      if (category) params.append("bounceCategory", category);
       if (pageToken) params.append("nextToken", pageToken);
       if (totalRecipients && totalRecipients > 0) {
         params.append("totalRecipients", totalRecipients.toString());
@@ -187,7 +205,7 @@ export default function EmailLogs({
 
   const handleLoadMore = () => {
     if (jobId && !loading && nextToken) {
-      fetchLogs(jobId, selectedEventType, recipientFilter, nextToken, true);
+      fetchLogs(jobId, selectedEventType, recipientFilter, bounceCategory, nextToken, true);
     }
   };
 
@@ -244,6 +262,22 @@ export default function EmailLogs({
             </select>
           </div>
 
+          {selectedEventType === "Bounce" && (
+            <div className="form-group">
+              <label>Bounce Category</label>
+              <select
+                value={bounceCategory || ""}
+                onChange={(e) =>
+                  setBounceCategory((e.target.value || null) as "hard" | "soft" | null)
+                }
+              >
+                <option value="">All Bounces</option>
+                <option value="hard">Hard (Permanent)</option>
+                <option value="soft">Soft (Transient)</option>
+              </select>
+            </div>
+          )}
+
           <div className="form-group">
             <label>Recipient Email</label>
             <input
@@ -285,7 +319,14 @@ export default function EmailLogs({
               </div>
               <div className="metric-item">
                 <span className="metric-label">Soft Bounces:</span>
-                <span className="metric-value">{jobMetrics.softBounceCount}</span>
+                <span
+                  className={`metric-value ${jobMetrics.softBouncePermanentCount && jobMetrics.softBouncePermanentCount > 0 ? "warning" : ""}`}
+                >
+                  {jobMetrics.softBounceCount}
+                  {jobMetrics.softBouncePermanentCount && jobMetrics.softBouncePermanentCount > 0
+                    ? ` (${jobMetrics.softBouncePermanentCount} effectively permanent)`
+                    : ""}
+                </span>
               </div>
               <div className="metric-item">
                 <span className="metric-label">Complaints:</span>
@@ -301,6 +342,25 @@ export default function EmailLogs({
               </div>
             </div>
           )}
+
+          {jobMetrics &&
+            jobMetrics.bounceSubtypeCounts &&
+            Object.keys(jobMetrics.bounceSubtypeCounts).length > 0 && (
+              <div className="metrics-summary" style={{ marginTop: "0.5rem" }}>
+                <div className="metric-item" style={{ flexBasis: "100%" }}>
+                  <span className="metric-label">Bounce subtypes:</span>
+                  <span
+                    className="metric-value"
+                    style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                  >
+                    {Object.entries(jobMetrics.bounceSubtypeCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([k, v]) => `${k} (${v})`)
+                      .join(", ")}
+                  </span>
+                </div>
+              </div>
+            )}
 
           {loading ? (
             <p>Loading events...</p>
