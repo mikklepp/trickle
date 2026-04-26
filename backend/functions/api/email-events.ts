@@ -165,26 +165,33 @@ export async function logs(event: any) {
       }
     }
 
-    // Query DynamoDB for events with this jobId
-    const queryResult = await dynamodb.send(
-      new QueryCommand({
-        TableName: tableName,
-        KeyConditionExpression: "jobId = :jobId",
-        ExpressionAttributeValues: {
-          ":jobId": { S: jobId },
-        },
-        ScanIndexForward: false, // Sort by timestamp descending (latest first)
-        Limit: limit,
-        ExclusiveStartKey: exclusiveStartKey,
-      })
-    );
+    const classifiedEvents: ClassifiedEmailEvent[] = [];
+    let lastEvalKey: Record<string, any> | undefined = exclusiveStartKey;
+    let lastAcceptedKey: Record<string, any> | undefined = undefined;
+    const MAX_INNER_PAGES = 20;
+    let innerPages = 0;
 
-    let classifiedEvents: ClassifiedEmailEvent[] = [];
-    let nextToken: string | null = null;
+    // Loop until we have enough filtered results or run out of data.
+    // Filtering happens after DynamoDB returns its Limit-bounded page, so
+    // a single Query may yield zero matches even when the job has plenty.
+    while (classifiedEvents.length < limit && innerPages < MAX_INNER_PAGES) {
+      innerPages++;
+      const queryResult = await dynamodb.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "jobId = :jobId",
+          ExpressionAttributeValues: {
+            ":jobId": { S: jobId },
+          },
+          ScanIndexForward: false, // Sort by timestamp descending (latest first)
+          Limit: limit,
+          ExclusiveStartKey: lastEvalKey,
+        })
+      );
 
-    // Convert items, apply filters, and classify
-    if (queryResult.Items) {
-      for (const item of queryResult.Items) {
+      for (const item of queryResult.Items ?? []) {
+        if (classifiedEvents.length >= limit) break;
+
         const unmarshalled = unmarshall(item) as any;
         const email: EmailEvent = {
           jobId: unmarshalled.jobId,
@@ -195,12 +202,8 @@ export async function logs(event: any) {
           details: unmarshalled.details,
         };
 
-        // Apply event type filter if specified
-        if (eventType && email.eventType !== eventType) {
-          continue;
-        }
+        if (eventType && email.eventType !== eventType) continue;
 
-        // Apply bounce category filter (hard = Permanent, soft = Transient)
         if (bounceCategory) {
           if (email.eventType !== "Bounce") continue;
           const bt = (email.details as any)?.bounceType;
@@ -208,7 +211,6 @@ export async function logs(event: any) {
           if (bounceCategory === "soft" && bt !== "Transient") continue;
         }
 
-        // Apply recipient filter if specified
         if (
           recipientFilter &&
           !email.recipient.toLowerCase().includes(recipientFilter.toLowerCase())
@@ -216,21 +218,23 @@ export async function logs(event: any) {
           continue;
         }
 
-        // Classify the event
         const classification = classifyEvent(email);
-
-        const classifiedEvent: ClassifiedEmailEvent = {
-          ...email,
-          ...classification,
+        classifiedEvents.push({ ...email, ...classification });
+        lastAcceptedKey = {
+          jobId: { S: unmarshalled.jobId },
+          timestamp: { N: String(unmarshalled.timestamp) },
         };
-
-        classifiedEvents.push(classifiedEvent);
       }
+
+      lastEvalKey = queryResult.LastEvaluatedKey;
+      if (!lastEvalKey) break;
     }
 
-    // Generate next pagination token if there are more results
-    if (queryResult.LastEvaluatedKey) {
-      nextToken = JSON.stringify(queryResult.LastEvaluatedKey);
+    let nextToken: string | null = null;
+    if (classifiedEvents.length >= limit && lastAcceptedKey) {
+      nextToken = JSON.stringify(lastAcceptedKey);
+    } else if (lastEvalKey && innerPages >= MAX_INNER_PAGES) {
+      nextToken = JSON.stringify(lastEvalKey);
     }
 
     // Compute job metrics
