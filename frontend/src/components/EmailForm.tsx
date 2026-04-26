@@ -550,8 +550,8 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
           />
           {bodyWordCount > 0 && bodyWordCount < 20 && (
             <small className="hint" style={{ color: "orange" }}>
-              ⚠️ Short body ({bodyWordCount} word{bodyWordCount === 1 ? "" : "s"}) may be flagged
-              as spam by recipients (HTML_IMAGE_ONLY rules trigger when the open-tracking pixel
+              ⚠️ Short body ({bodyWordCount} word{bodyWordCount === 1 ? "" : "s"}) may be flagged as
+              spam by recipients (HTML_IMAGE_ONLY rules trigger when the open-tracking pixel
               dominates a sparse body). Aim for at least 20 words.
             </small>
           )}
