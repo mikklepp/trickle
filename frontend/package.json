@@ -15,13 +15,13 @@
   "dependencies": {
     "browser-image-compression": "^2.0.2",
     "date-fns": "^4.1.0",
-    "react": "^19.2.1",
+    "react": "^19.2.7",
     "react-dom": "^19.2.3",
     "react-quill-new": "^3.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
-    "@types/react": "^19.2.2",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "eslint": "^10.5.0",
