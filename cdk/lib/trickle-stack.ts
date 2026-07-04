@@ -387,9 +387,18 @@ export class TrickleStack extends cdk.Stack {
     grantAuthParameterAccess(configGetFunction);
     configTable.grantReadData(configGetFunction);
 
-    // configUpdateFunction - needs Parameter Store + config table read/write
+    // configUpdateFunction - needs Parameter Store + config table read/write +
+    // SES read-only (it calls ses:GetAccount to derive the rate-limit floor
+    // from the account's max send rate). Without this grant every config save
+    // throws AccessDenied and returns 500 "Failed to update config".
     grantAuthParameterAccess(configUpdateFunction);
     configTable.grantReadWriteData(configUpdateFunction);
+    configUpdateFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:GetAccount"],
+        resources: ["*"],
+      })
+    );
 
     // emailSendFunction - needs full permissions (Parameter Store, jobs, config, S3, SES, Scheduler, IAM)
     grantAuthParameterAccess(emailSendFunction);
