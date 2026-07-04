@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { calculateETA } from "../utils/calculateETA";
+import type { AuthFetch } from "../utils/authFetch";
 
 // Auto-refresh interval in milliseconds (while page is visible)
 // Collects SES events that arrive during and after job completion
@@ -17,7 +18,7 @@ function formatDate(isoString: string): string {
 
 interface JobStatusProps {
   apiUrl: string;
-  token: string;
+  authFetch: AuthFetch;
   jobId: string | null;
   onJobIdChange?: (jobId: string) => void;
   onNavigateToLogs?: (
@@ -84,7 +85,7 @@ interface JobListItem {
 
 export default function JobStatus({
   apiUrl,
-  token,
+  authFetch,
   jobId,
   onJobIdChange,
   onNavigateToLogs,
@@ -136,11 +137,7 @@ export default function JobStatus({
   const fetchJobs = async () => {
     setLoadingJobs(true);
     try {
-      const response = await fetch(`${apiUrl}/email/jobs`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/email/jobs`);
       const data = await response.json();
 
       if (response.ok) {
@@ -160,11 +157,7 @@ export default function JobStatus({
     setError("");
 
     try {
-      const response = await fetch(`${apiUrl}/email/status/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/email/status/${id}`);
       const data = await response.json();
 
       if (response.ok) {
@@ -190,11 +183,7 @@ export default function JobStatus({
 
     setLoadingMetrics(true);
     try {
-      const response = await fetch(`${apiUrl}/email/events/summary/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/email/events/summary/${id}`);
       const data = await response.json();
 
       if (response.ok) {

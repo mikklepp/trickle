@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { calculateETA } from "../utils/calculateETA";
+import type { AuthFetch } from "../utils/authFetch";
 
 interface ConfigProps {
   apiUrl: string;
-  token: string;
+  authFetch: AuthFetch;
 }
 
 interface ConfigData {
@@ -21,7 +22,7 @@ const DEFAULT_CONFIG: ConfigData = {
   },
 };
 
-export default function Config({ apiUrl, token }: ConfigProps) {
+export default function Config({ apiUrl, authFetch }: ConfigProps) {
   const [config, setConfig] = useState<ConfigData>(DEFAULT_CONFIG);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -33,11 +34,7 @@ export default function Config({ apiUrl, token }: ConfigProps) {
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch(`${apiUrl}/config`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/config`);
       const data = await response.json();
       if (response.ok) {
         setConfig(data);
@@ -54,11 +51,10 @@ export default function Config({ apiUrl, token }: ConfigProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${apiUrl}/config`, {
+      const response = await authFetch(`${apiUrl}/config`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(config),
       });

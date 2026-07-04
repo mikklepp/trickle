@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import EventDetailCard from "./EventDetailCard";
+import type { AuthFetch } from "../utils/authFetch";
 
 /**
  * Formats a timestamp (ISO string or milliseconds) in local time
@@ -66,7 +67,7 @@ interface JobListItem {
 
 interface EmailLogsProps {
   apiUrl: string;
-  token: string;
+  authFetch: AuthFetch;
   jobId: string | null;
   initialEventType?: string | null;
   initialBounceCategory?: "hard" | "soft" | null;
@@ -75,7 +76,7 @@ interface EmailLogsProps {
 
 export default function EmailLogs({
   apiUrl,
-  token,
+  authFetch,
   jobId,
   initialEventType,
   initialBounceCategory,
@@ -134,11 +135,7 @@ export default function EmailLogs({
   const fetchJobs = async () => {
     setLoadingJobs(true);
     try {
-      const response = await fetch(`${apiUrl}/email/jobs`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/email/jobs`);
       const data = await response.json();
 
       if (response.ok) {
@@ -176,11 +173,7 @@ export default function EmailLogs({
       }
       params.append("limit", "100");
 
-      const response = await fetch(`${apiUrl}/email/events/logs/${id}?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/email/events/logs/${id}?${params.toString()}`);
       const data: EmailLogsResponse = await response.json();
 
       if (response.ok) {
