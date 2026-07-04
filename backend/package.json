@@ -1,6 +1,6 @@
 {
   "name": "trickle-backend",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Trickle backend Lambda functions",
   "private": true,
   "type": "module",

@@ -5,6 +5,15 @@ on:
     branches:
       - main
 
+# Serialize deploys. Multiple pushes landing close together would otherwise
+# run in parallel against the same CloudFormation stack and collide
+# ("Cannot delete ChangeSet in status CREATE_IN_PROGRESS"). Queue them instead;
+# never cancel an in-flight deploy — interrupting a live CFN changeset can wedge
+# the stack.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write

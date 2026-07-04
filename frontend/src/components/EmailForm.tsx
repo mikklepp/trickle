@@ -3,6 +3,7 @@ import ReactQuill from "react-quill-new";
 import imageCompression from "browser-image-compression";
 import { format } from "date-fns";
 import { calculateETA } from "../utils/calculateETA";
+import type { AuthFetch } from "../utils/authFetch";
 import "react-quill-new/dist/quill.snow.css";
 
 /**
@@ -15,7 +16,7 @@ function formatDate(date: Date): string {
 
 interface EmailFormProps {
   apiUrl: string;
-  token: string;
+  authFetch: AuthFetch;
   onJobCreated: (jobId: string) => void;
 }
 
@@ -72,7 +73,7 @@ function containsCRLF(text: string): boolean {
   return /[\r\n]/.test(text);
 }
 
-export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProps) {
+export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
   const [recentSenders, setRecentSenders] = useState<RecentSender[]>([]);
@@ -129,11 +130,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const fetchSenders = async () => {
     setLoadingSenders(true);
     try {
-      const response = await fetch(`${apiUrl}/senders`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/senders`);
       const data = (await response.json()) as VerifiedIdentities;
       setVerifiedEmails(data.emails || []);
       setVerifiedDomains(data.domains || []);
@@ -153,11 +150,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch(`${apiUrl}/config`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/config`);
       const data = (await response.json()) as Config;
       setConfig(data);
     } catch (err) {
@@ -169,11 +162,7 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
   const fetchQuota = async () => {
     setLoadingQuota(true);
     try {
-      const response = await fetch(`${apiUrl}/account/quota`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch(`${apiUrl}/account/quota`);
       const data = (await response.json()) as Quota;
       setQuota(data);
     } catch (err) {
@@ -333,11 +322,10 @@ export default function EmailForm({ apiUrl, token, onJobCreated }: EmailFormProp
       const escapedName = escapeDisplayName(senderName.trim());
       const formattedSender = `"${escapedName}" <${sender}>`;
 
-      const response = await fetch(`${apiUrl}/email/send`, {
+      const response = await authFetch(`${apiUrl}/email/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           sender: formattedSender,

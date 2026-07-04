@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import "./App.css";
 import Login from "./components/Login";
 import EmailForm from "./components/EmailForm";
@@ -6,6 +6,7 @@ import JobStatus from "./components/JobStatus";
 import EmailLogs from "./components/EmailLogs";
 import Config from "./components/Config";
 import { getApiUrl } from "./utils/getApiUrl";
+import { makeAuthFetch } from "./utils/authFetch";
 
 const API_URL = getApiUrl();
 
@@ -65,7 +66,12 @@ function App() {
     setView("email");
   };
 
-  if (!token) {
+  // A fetch bound to the current token that logs out automatically on a 401,
+  // so an expired/invalid session returns to the login screen instead of
+  // leaving a broken UI that fails every request.
+  const authFetch = useMemo(() => (token ? makeAuthFetch(token, handleLogout) : null), [token]);
+
+  if (!token || !authFetch) {
     return <Login apiUrl={API_URL} onLogin={setToken} />;
   }
 
@@ -96,7 +102,7 @@ function App() {
         {view === "email" && (
           <EmailForm
             apiUrl={API_URL}
-            token={token}
+            authFetch={authFetch}
             onJobCreated={(jobId) => {
               setCurrentJobId(jobId);
               setView("status");
@@ -106,7 +112,7 @@ function App() {
         {view === "status" && (
           <JobStatus
             apiUrl={API_URL}
-            token={token}
+            authFetch={authFetch}
             jobId={currentJobId}
             onJobIdChange={setCurrentJobId}
             onNavigateToLogs={handleNavigateToLogs}
@@ -115,14 +121,14 @@ function App() {
         {view === "logs" && (
           <EmailLogs
             apiUrl={API_URL}
-            token={token}
+            authFetch={authFetch}
             jobId={currentJobId}
             initialEventType={selectedEventType}
             initialBounceCategory={selectedBounceCategory}
             onJobIdChange={setCurrentJobId}
           />
         )}
-        {view === "config" && <Config apiUrl={API_URL} token={token} />}
+        {view === "config" && <Config apiUrl={API_URL} authFetch={authFetch} />}
       </main>
     </div>
   );
