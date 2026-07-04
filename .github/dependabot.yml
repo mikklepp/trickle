@@ -22,12 +22,20 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
     groups:
-      # Collapse routine dev-tooling bumps into a single PR.
-      dev-dependencies:
-        dependency-type: "development"
+      # One PR for all routine (minor/patch) bumps across the workspace, prod
+      # and dev alike. Majors are split into their own PR (below) since they
+      # are more likely to break and warrant individual review.
+      npm-minor-patch:
+        patterns:
+          - "*"
         update-types:
           - "minor"
           - "patch"
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # Backend Lambda bundle. backend/package-lock.json is a standalone lockfile
   # that the backend build copies into dist/ and installs from, so it is the
@@ -42,12 +50,17 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
     groups:
-      backend-dependencies:
+      backend-minor-patch:
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
+      backend-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
