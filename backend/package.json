@@ -21,7 +21,7 @@
     "node-html-parser": "^7.1.0"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.156",
+    "@types/aws-lambda": "^8.10.162",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.6.0",
     "typescript": "^6.0.3"
