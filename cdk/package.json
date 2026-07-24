@@ -14,14 +14,14 @@
     "destroy": "cdk destroy --all"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
-    "aws-cdk": "^2.1128.1",
+    "@types/node": "^26.1.1",
+    "aws-cdk": "^2.1130.0",
     "dotenv": "^17.2.3",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@aws-sdk/client-sts": "^3.917.0",
+    "@aws-sdk/client-sts": "^3.1085.0",
     "aws-cdk-lib": "^2.260.0",
     "constructs": "^10.4.4"
   }
