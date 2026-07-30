@@ -18,7 +18,7 @@
     "aws-cdk": "^2.1132.0",
     "dotenv": "^17.2.3",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@aws-sdk/client-sts": "^3.1090.0",
