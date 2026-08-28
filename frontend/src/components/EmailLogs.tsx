@@ -189,7 +189,7 @@ export default function EmailLogs({
       } else {
         setError(data.error || "Failed to fetch email logs");
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
@@ -363,7 +363,16 @@ export default function EmailLogs({
             <>
               <div className="events-cards">
                 {events.map((event, index) => (
-                  <EventDetailCard key={`${index}-${event.timestamp}`} event={event as any} />
+                  <EventDetailCard
+                    key={`${index}-${event.timestamp}`}
+                    // EmailEvent (above) and ClassifiedEvent (EventDetailCard) are two
+                    // declarations of the same API payload; this one makes the
+                    // classification fields optional, the other requires them. Sharing a
+                    // single type is the real fix, but it has to settle whether those
+                    // fields are actually guaranteed before tightening them.
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    event={event as any}
+                  />
                 ))}
               </div>
               {events.length > 0 && nextToken && (

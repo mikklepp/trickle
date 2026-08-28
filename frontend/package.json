@@ -7,6 +7,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "lint": "eslint .",
     "preview": "vite preview",
     "watch": "npm-run-all --parallel tsc:watch vite:watch",
     "tsc:watch": "tsc -b --watch",

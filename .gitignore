@@ -14,7 +14,10 @@ dist
 # CDK asset staging directory
 .cdk.staging
 cdk.out
-cdk.context.json
+# cdk.context.json is deliberately COMMITTED: the cached Route53 lookup is what
+# lets PR validation run `cdk synth` without AWS credentials. Removing it puts
+# the deploy path back outside CI's reach.
+!cdk/cdk.context.json
 
 # TypeScript build info
 *.tsbuildinfo

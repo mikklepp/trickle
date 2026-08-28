@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { useState } from "react";
 
 interface EventDetails {
@@ -70,7 +71,7 @@ export default function EventDetailCard({ event }: EventDetailCardProps) {
   const renderEventDetails = () => {
     if (!event.details) return null;
 
-    const details: any[] = [];
+    const details: ReactElement[] = [];
 
     // Bounce-specific details
     if (event.eventType === "Bounce") {

@@ -171,7 +171,7 @@ export default function JobStatus({
       } else {
         setError(data.error || "Failed to fetch job status");
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);

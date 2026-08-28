@@ -26,14 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # NOTE: PR validation deliberately does NOT run `cdk synth`. Synth needs
-      # AWS (STS account lookup + Route53 HostedZone.fromLookup in the CDK app),
-      # and Dependabot PRs run without repo secrets, so any AWS step fails before
-      # the build. We validate everything that can run credential-free instead;
-      # synth is exercised on the deploy workflow (push to main).
-
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
 
       - name: Build backend
         run: npm run build --workspace=backend
@@ -46,6 +43,23 @@ jobs:
 
       - name: Build frontend
         run: npm run build --workspace=frontend
+
+      # Synthesize the CDK app. This used to be skipped because synth needs AWS
+      # (STS account lookup + Route53 HostedZone.fromLookup) and Dependabot PRs
+      # get no secrets -- which meant anything breaking only the deploy path
+      # passed PR checks and failed on push to main. cdk/cdk.context.json now
+      # caches the hosted-zone lookup, and the account is supplied directly, so
+      # this runs credential-free. It also exercises esbuild bundling of all 12
+      # Lambdas, which nothing else in CI covers.
+      - name: Synth CDK app
+        working-directory: cdk
+        env:
+          CDK_DEFAULT_ACCOUNT: "917371804581"
+          CDK_REGION: eu-west-1
+          CDK_STAGE: ci
+          AUTH_USERNAME: ci
+          AUTH_PASSWORD: ci
+        run: npx cdk synth --all --quiet
 
       - name: Check formatting
         run: npm run format:check

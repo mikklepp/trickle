@@ -141,7 +141,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
           setSender(data.emails[0]);
         }
       }
-    } catch (err) {
+    } catch {
       setError("Failed to fetch verified senders");
     } finally {
       setLoadingSenders(false);
@@ -354,7 +354,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
       } else {
         setError(data.error || "Failed to send email");
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);

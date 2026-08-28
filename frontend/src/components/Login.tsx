@@ -30,7 +30,7 @@ export default function Login({ apiUrl, onLogin }: LoginProps) {
       } else {
         setError(data.error || "Login failed");
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);

@@ -11,6 +11,7 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
     "build": "npm run build --workspaces && npm run format:check",
     "deploy": "npm run build && npm run deploy --workspace=cdk",
     "dev": "npm-run-all --parallel backend:watch frontend:watch cdk:watch",

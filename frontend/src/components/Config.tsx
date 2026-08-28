@@ -39,7 +39,7 @@ export default function Config({ apiUrl, authFetch }: ConfigProps) {
       if (response.ok) {
         setConfig(data);
       }
-    } catch (err) {
+    } catch {
       setError("Failed to fetch config");
     }
   };
@@ -67,7 +67,7 @@ export default function Config({ apiUrl, authFetch }: ConfigProps) {
       } else {
         setError(data.error || "Failed to update config");
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
