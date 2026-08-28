@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import "./App.css";
 import Login from "./components/Login";
 import EmailForm from "./components/EmailForm";
@@ -29,6 +29,11 @@ function App() {
   const [selectedBounceCategory, setSelectedBounceCategory] = useState<"hard" | "soft" | null>(
     null
   );
+
+  // Captured at first render because the URL-sync effect below strips the
+  // parameter as soon as it runs with no job selected -- which is exactly the
+  // unauthenticated case, where the link still has to survive logging in.
+  const deepLinkedJobId = useRef(jobIdFromUrl());
 
   useEffect(() => {
     if (token) {
@@ -67,7 +72,7 @@ function App() {
   // starts, which is the only moment it is meaningful.
   const handleLogin = (newToken: string) => {
     setToken(newToken);
-    const jobId = jobIdFromUrl();
+    const jobId = deepLinkedJobId.current;
     if (jobId) {
       setCurrentJobId(jobId);
       setView("status");

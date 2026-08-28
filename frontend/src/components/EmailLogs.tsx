@@ -236,8 +236,9 @@ export default function EmailLogs({
       {jobId && (
         <div className="email-logs-filters">
           <div className="form-group">
-            <label>Event Type</label>
+            <label htmlFor="filter-event-type">Event Type</label>
             <select
+              id="filter-event-type"
               value={selectedEventType || ""}
               onChange={(e) => {
                 const next = e.target.value || null;
@@ -259,8 +260,9 @@ export default function EmailLogs({
 
           {selectedEventType === "Bounce" && (
             <div className="form-group">
-              <label>Bounce Category</label>
+              <label htmlFor="filter-bounce-category">Bounce Category</label>
               <select
+                id="filter-bounce-category"
                 value={bounceCategory || ""}
                 onChange={(e) =>
                   setBounceCategory((e.target.value || null) as "hard" | "soft" | null)
@@ -274,8 +276,9 @@ export default function EmailLogs({
           )}
 
           <div className="form-group">
-            <label>Recipient Email</label>
+            <label htmlFor="filter-recipient">Recipient Email</label>
             <input
+              id="filter-recipient"
               type="email"
               value={recipientFilter}
               onChange={(e) => setRecipientFilter(e.target.value)}

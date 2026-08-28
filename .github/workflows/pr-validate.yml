@@ -35,9 +35,12 @@ jobs:
       - name: Build backend
         run: npm run build --workspace=backend
 
-      # Asserts every (module, export) pair the CDK stack wires actually
-      # resolves. esbuild verifies the entry *file* at synth; nothing else
-      # verifies the *export*, so a renamed handler would reach production.
+      # Backend: asserts every (module, export) pair the CDK stack wires
+      # actually resolves -- esbuild verifies the entry *file* at synth, nothing
+      # else verifies the *export* -- plus unit tests for the pure logic.
+      # Frontend: component tests under Vitest/jsdom. These cannot run on the
+      # backend's `node --test`, because Node strips TypeScript types but does
+      # not transform JSX.
       - name: Test
         run: npm test
 
