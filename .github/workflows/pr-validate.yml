@@ -38,19 +38,11 @@ jobs:
       - name: Build backend
         run: npm run build --workspace=backend
 
-      # Import the built Lambda entrypoints exactly as the runtime would, to
-      # catch module-load failures before they reach production. A worker that
-      # dies at import (e.g. a CommonJS dep that require()s an ESM-only
-      # transitive dep -> ERR_REQUIRE_ESM) is invisible to typecheck/build but
-      # kills every invocation. This loads modules only; it constructs no AWS
-      # clients' network calls, so it runs credential-free (incl. Dependabot).
-      - name: Smoke-test built Lambda modules
-        run: |
-          node --input-type=module -e "
-            await import('./backend/dist/worker/index.js');
-            await import('./backend/dist/api/email.js');
-            console.log('OK: built Lambda modules loaded without error');
-          "
+      # Asserts every (module, export) pair the CDK stack wires actually
+      # resolves. esbuild verifies the entry *file* at synth; nothing else
+      # verifies the *export*, so a renamed handler would reach production.
+      - name: Test
+        run: npm test
 
       - name: Build frontend
         run: npm run build --workspace=frontend

@@ -1,5 +1,5 @@
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { getSecrets } from "../shared/secrets.js";
+import jwt, { type JwtPayload } from "jsonwebtoken";
+import { getSecrets } from "../shared/secrets.ts";
 
 let authSecret: string;
 let validUsername: string;

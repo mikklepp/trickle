@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc && cp package.json package-lock.json dist/ && npm install --omit=dev --prefix dist/",
-    "watch": "tsc --watch"
+    "build": "tsc --noEmit",
+    "watch": "tsc --watch",
+    "test": "node --test functions/**/*.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.1095.0",
