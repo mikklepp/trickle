@@ -15,15 +15,15 @@
     "destroy": "cdk destroy --all"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
-    "aws-cdk": "^2.1132.0",
+    "@types/node": "^26.2.0",
+    "aws-cdk": "^2.1138.0",
     "dotenv": "^17.2.3",
     "esbuild": "^0.28.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@aws-sdk/client-sts": "^3.1090.0",
+    "@aws-sdk/client-sts": "^3.1115.0",
     "aws-cdk-lib": "^2.267.0",
-    "constructs": "^10.7.0"
+    "constructs": "^10.8.1"
   }
 }
