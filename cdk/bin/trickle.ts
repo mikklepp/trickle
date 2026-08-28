@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
-import { TrickleStack } from "../lib/trickle-stack";
-import { TrickleFrontendCertificateStack } from "../lib/frontend-certificate-stack";
-import * as os from "os";
+import { TrickleStack } from "../lib/trickle-stack.ts";
+import { TrickleFrontendCertificateStack } from "../lib/frontend-certificate-stack.ts";
+import * as os from "node:os";
+import { randomBytes } from "node:crypto";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 
 async function main() {
@@ -36,7 +37,7 @@ async function main() {
   // Get auth credentials from environment
   const authUsername = process.env.AUTH_USERNAME;
   const authPassword = process.env.AUTH_PASSWORD;
-  const authSecret = process.env.AUTH_SECRET || require("crypto").randomBytes(32).toString("hex");
+  const authSecret = process.env.AUTH_SECRET || randomBytes(32).toString("hex");
 
   if (!authUsername || !authPassword) {
     throw new Error(

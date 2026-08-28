@@ -1,13 +1,20 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": ["node"],
+    // The CDK app is executed directly from TypeScript by Node's native type
+    // stripping (see cdk.json), so nothing consumes emitted JS. Type-check
+    // only, and allow the explicit .ts import specifiers Node's ESM resolver
+    // requires.
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "exclude": ["node_modules", "cdk.out"]
 }
