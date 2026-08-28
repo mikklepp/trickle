@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import EmailForm from "./EmailForm";
 import { mockFetch } from "../test/fetchMock";
+import { renderWithQuery } from "../test/renderWithQuery";
 import type { AuthFetch } from "../utils/authFetch";
 
 const authFetch: AuthFetch = (input, init) => fetch(input, init);
@@ -13,7 +14,7 @@ const ROUTES = {
 };
 
 const renderForm = () =>
-  render(<EmailForm apiUrl="http://api" authFetch={authFetch} onJobCreated={() => {}} />);
+  renderWithQuery(<EmailForm apiUrl="http://api" authFetch={authFetch} onJobCreated={() => {}} />);
 
 describe("EmailForm", () => {
   test("loads senders, config and quota on mount", async () => {

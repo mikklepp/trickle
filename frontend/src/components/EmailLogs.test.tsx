@@ -1,8 +1,9 @@
 import { describe, test, expect } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EmailLogs from "./EmailLogs";
 import { mockFetch } from "../test/fetchMock";
+import { renderWithQuery } from "../test/renderWithQuery";
 import type { AuthFetch } from "../utils/authFetch";
 
 const authFetch: AuthFetch = (input, init) => fetch(input, init);
@@ -21,7 +22,7 @@ const event = (over: Record<string, unknown> = {}) => ({
 
 function renderLogs(logs: unknown = { events: [event()] }) {
   const mock = mockFetch({ "/email/jobs": JOBS, "/email/events/logs/": logs });
-  render(<EmailLogs apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
+  renderWithQuery(<EmailLogs apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
   return mock;
 }
 

@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { calculateETA } from "../utils/calculateETA";
+import { jsonOrThrow, queryKeys } from "../queryKeys";
 import type { AuthFetch } from "../utils/authFetch";
 
 interface ConfigProps {
@@ -23,62 +25,53 @@ const DEFAULT_CONFIG: ConfigData = {
 };
 
 export default function Config({ apiUrl, authFetch }: ConfigProps) {
-  const [config, setConfig] = useState<ConfigData>(DEFAULT_CONFIG);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
   const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const fetchConfig = useCallback(async () => {
-    try {
-      const response = await authFetch(`${apiUrl}/config`);
-      const data = await response.json();
-      if (response.ok) {
-        setConfig(data);
-      }
-    } catch {
-      setError("Failed to fetch config");
-    }
-  }, [apiUrl, authFetch]);
+  const configQuery = useQuery({
+    queryKey: queryKeys.config,
+    queryFn: async () => (await jsonOrThrow(await authFetch(`${apiUrl}/config`))) as ConfigData,
+  });
 
-  useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+  // The form is a draft laid over server state: null means "no local edits", so
+  // the inputs show whatever the query last returned without an effect copying
+  // one into the other.
+  const [draft, setDraft] = useState<ConfigData | null>(null);
+  const config = draft ?? configQuery.data ?? DEFAULT_CONFIG;
+  const setConfig = setDraft;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const saveConfig = useMutation({
+    mutationFn: async (next: ConfigData) =>
+      (await jsonOrThrow(
+        await authFetch(`${apiUrl}/config`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        })
+      )) as ConfigData,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(queryKeys.config, saved);
+      // Drop the draft so the form follows server state again.
+      setDraft(null);
+      setSuccess("Config updated successfully");
+    },
+  });
+
+  const loading = saveConfig.isPending;
+  const error =
+    (saveConfig.error as Error | null)?.message ??
+    (configQuery.error ? "Failed to fetch config" : "");
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setSuccess("");
-    setLoading(true);
-
-    try {
-      const response = await authFetch(`${apiUrl}/config`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(config),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccess("Config updated successfully");
-        setConfig(data);
-      } else {
-        setError(data.error || "Failed to update config");
-      }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    saveConfig.mutate(config);
   };
 
   const handleResetDefaults = () => {
     if (confirm("Reset all configuration to defaults?")) {
-      setConfig(DEFAULT_CONFIG);
+      setDraft(DEFAULT_CONFIG);
       setSuccess("");
-      setError("");
     }
   };
 

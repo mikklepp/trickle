@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { jsonOrThrow, queryKeys } from "../queryKeys";
 import ReactQuill from "react-quill-new";
 import imageCompression from "browser-image-compression";
 import { format } from "date-fns";
@@ -92,12 +94,14 @@ function readRecentSenders(): RecentSender[] {
 }
 
 export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailFormProps) {
-  const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
-  const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
   // Read once while initialising rather than in a mount effect: this is local
   // state restored from localStorage, not a subscription to anything.
   const [recentSenders, setRecentSenders] = useState<RecentSender[]>(readRecentSenders);
-  const [sender, setSender] = useState(() => readRecentSenders()[0]?.email ?? "");
+  // null means "untouched", so the field can fall through to the first verified
+  // address once that query resolves, without an effect copying it across.
+  const [senderInput, setSenderInput] = useState<string | null>(
+    () => readRecentSenders()[0]?.email ?? null
+  );
   const [senderName, setSenderName] = useState(() => readRecentSenders()[0]?.name ?? "");
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
@@ -105,10 +109,6 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingSenders, setLoadingSenders] = useState(true);
-  const [loadingQuota, setLoadingQuota] = useState(true);
-  const [config, setConfig] = useState<Config>({ rateLimit: 60, maxAttachmentSize: 10485760 });
-  const [quota, setQuota] = useState<Quota | null>(null);
 
   const saveRecentSender = (email: string, name: string = "") => {
     const newSender: RecentSender = { email, name: name || undefined };
@@ -118,56 +118,31 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
     console.log("Saved recent senders:", recent);
   };
 
-  const fetchSenders = useCallback(async () => {
-    setLoadingSenders(true);
-    try {
-      const response = await authFetch(`${apiUrl}/senders`);
-      const data = (await response.json()) as VerifiedIdentities;
-      setVerifiedEmails(data.emails || []);
-      setVerifiedDomains(data.domains || []);
+  const sendersQuery = useQuery({
+    queryKey: queryKeys.senders,
+    queryFn: async () =>
+      (await jsonOrThrow(await authFetch(`${apiUrl}/senders`))) as VerifiedIdentities,
+  });
+  const configQuery = useQuery({
+    queryKey: queryKeys.config,
+    queryFn: async () => (await jsonOrThrow(await authFetch(`${apiUrl}/config`))) as Config,
+  });
+  const quotaQuery = useQuery({
+    queryKey: queryKeys.quota,
+    queryFn: async () => (await jsonOrThrow(await authFetch(`${apiUrl}/account/quota`))) as Quota,
+  });
 
-      // Default to the first verified sender, but never overwrite a choice the
-      // user (or the restored recent-sender) already made. Reading the current
-      // value functionally keeps `sender` out of this callback's dependencies.
-      if (data.emails && data.emails.length > 0) {
-        setSender((current) => current || data.emails[0]);
-      }
-    } catch {
-      setError("Failed to fetch verified senders");
-    } finally {
-      setLoadingSenders(false);
-    }
-  }, [apiUrl, authFetch]);
+  const verifiedEmails = sendersQuery.data?.emails ?? [];
+  const verifiedDomains = sendersQuery.data?.domains ?? [];
+  const config: Config = configQuery.data ?? { rateLimit: 60, maxAttachmentSize: 10485760 };
+  const quota = quotaQuery.data ?? null;
+  const loadingSenders = sendersQuery.isPending;
+  const loadingQuota = quotaQuery.isPending;
 
-  const fetchConfig = useCallback(async () => {
-    try {
-      const response = await authFetch(`${apiUrl}/config`);
-      const data = (await response.json()) as Config;
-      setConfig(data);
-    } catch (err) {
-      // Use defaults on error
-      console.error("Failed to fetch config:", err);
-    }
-  }, [apiUrl, authFetch]);
-
-  const fetchQuota = useCallback(async () => {
-    setLoadingQuota(true);
-    try {
-      const response = await authFetch(`${apiUrl}/account/quota`);
-      const data = (await response.json()) as Quota;
-      setQuota(data);
-    } catch (err) {
-      console.error("Failed to fetch quota:", err);
-    } finally {
-      setLoadingQuota(false);
-    }
-  }, [apiUrl, authFetch]);
-
-  useEffect(() => {
-    fetchSenders();
-    fetchConfig();
-    fetchQuota();
-  }, [fetchSenders, fetchConfig, fetchQuota]);
+  // A restored recent sender wins; otherwise fall back to the first verified
+  // address once it is known.
+  const sender = senderInput ?? verifiedEmails[0] ?? "";
+  const setSender = setSenderInput;
 
   const isValidSender = (email: string): boolean => {
     // Check if email exactly matches a verified email

@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { mockFetch } from "./test/fetchMock";
+import { renderWithQuery } from "./test/renderWithQuery";
 
 // Everything the child views fetch on mount; the assertions here are about
 // App's own routing, not about what the children render.
@@ -31,7 +32,7 @@ describe("App deep linking", () => {
 
   test("starts on the email view when there is no jobId in the URL", async () => {
     localStorage.setItem("token", "t");
-    render(<App />);
+    renderWithQuery(<App />);
     expect(await screen.findByRole("button", { name: /send email/i })).toHaveClass("active");
   });
 
@@ -39,13 +40,13 @@ describe("App deep linking", () => {
   test("opens the status view for an authenticated load carrying ?jobId", async () => {
     localStorage.setItem("token", "t");
     window.history.replaceState({}, "", "/?jobId=job-42");
-    render(<App />);
+    renderWithQuery(<App />);
     expect(await screen.findByRole("button", { name: /job status/i })).toHaveClass("active");
   });
 
   test("ignores ?jobId when there is no session and shows the login screen", async () => {
     window.history.replaceState({}, "", "/?jobId=job-42");
-    render(<App />);
+    renderWithQuery(<App />);
     expect(await screen.findByRole("heading", { name: /trickle login/i })).toBeInTheDocument();
   });
 
@@ -54,7 +55,7 @@ describe("App deep linking", () => {
   test("applies a ?jobId deep link after logging in", async () => {
     window.history.replaceState({}, "", "/?jobId=job-42");
     mockFetch({ ...CHILD_ENDPOINTS, "/auth/login": { token: "fresh-token" } });
-    render(<App />);
+    renderWithQuery(<App />);
 
     await userEvent.type(await screen.findByLabelText(/username/i), "u");
     await userEvent.type(screen.getByLabelText(/password/i), "p");
@@ -67,7 +68,7 @@ describe("App deep linking", () => {
 
   test("persists the token to localStorage on login", async () => {
     mockFetch({ ...CHILD_ENDPOINTS, "/auth/login": { token: "fresh-token" } });
-    render(<App />);
+    renderWithQuery(<App />);
     await userEvent.type(await screen.findByLabelText(/username/i), "u");
     await userEvent.type(screen.getByLabelText(/password/i), "p");
     await userEvent.click(screen.getByRole("button", { name: /login/i }));

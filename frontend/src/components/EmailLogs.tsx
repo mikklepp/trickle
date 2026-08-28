@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { format } from "date-fns";
+import React, { useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { jsonOrThrow, queryKeys } from "../queryKeys";
+import JobsTable, { type JobListItem } from "./JobsTable";
 import EventDetailCard from "./EventDetailCard";
 import type { AuthFetch } from "../utils/authFetch";
 
@@ -7,11 +9,6 @@ import type { AuthFetch } from "../utils/authFetch";
  * Formats a timestamp (ISO string or milliseconds) in local time
  * Example: 2025-10-28 14:12
  */
-function formatDate(timestamp: string | number): string {
-  const date = new Date(timestamp);
-  return format(date, "yyyy-MM-dd HH:mm");
-}
-
 interface EmailEvent {
   timestamp: number;
   recipient: string;
@@ -54,17 +51,6 @@ interface EmailLogsResponse {
   error?: string;
 }
 
-interface JobListItem {
-  jobId: string;
-  status: string;
-  sender: string;
-  subject: string;
-  totalRecipients: number;
-  sent: number;
-  failed: number;
-  createdAt: string;
-}
-
 interface EmailLogsProps {
   apiUrl: string;
   authFetch: AuthFetch;
@@ -83,13 +69,6 @@ export default function EmailLogs({
   onJobIdChange,
 }: EmailLogsProps) {
   const [searchJobId, setSearchJobId] = useState(jobId || "");
-  const [events, setEvents] = useState<EmailEvent[]>([]);
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
-  const [jobMetrics, setJobMetrics] = useState<JobMetrics | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-  const [nextToken, setNextToken] = useState<string | null>(null);
 
   // Filters
   const [selectedEventType, setSelectedEventType] = useState<string | null>(
@@ -111,89 +90,45 @@ export default function EmailLogs({
     "Click",
   ];
 
-  const fetchJobs = useCallback(async () => {
-    setLoadingJobs(true);
-    try {
-      const response = await authFetch(`${apiUrl}/email/jobs`);
-      const data = await response.json();
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.jobs,
+    queryFn: async () =>
+      ((await jsonOrThrow(await authFetch(`${apiUrl}/email/jobs`))) as { jobs: JobListItem[] })
+        .jobs,
+  });
 
-      if (response.ok) {
-        setJobs(data.jobs);
-      }
-    } catch (err) {
-      console.error("Failed to fetch jobs:", err);
-    } finally {
-      setLoadingJobs(false);
-    }
-  }, [apiUrl, authFetch]);
-
-  const fetchLogs = useCallback(
-    async (
-      id: string,
-      eventType: string | null,
-      recipient: string,
-      category: "hard" | "soft" | null,
-      pageToken?: string | null,
-      append: boolean = false,
-      totalRecipients?: number
-    ) => {
-      if (!id) return;
-
-      setLoading(true);
-      if (!append) setError("");
-
-      try {
-        const params = new URLSearchParams();
-        if (eventType) params.append("eventType", eventType);
-        if (recipient) params.append("recipient", recipient);
-        if (category) params.append("bounceCategory", category);
-        if (pageToken) params.append("nextToken", pageToken);
-        if (totalRecipients && totalRecipients > 0) {
-          params.append("totalRecipients", totalRecipients.toString());
-        }
-        params.append("limit", "100");
-
-        const response = await authFetch(`${apiUrl}/email/events/logs/${id}?${params.toString()}`);
-        const data: EmailLogsResponse = await response.json();
-
-        if (response.ok) {
-          if (append) {
-            // Load more: append to existing events
-            setEvents((prev) => [...prev, ...(data.events || [])]);
-          } else {
-            // Initial load: replace events and metrics
-            setEvents(data.events || []);
-            setJobMetrics(data.jobMetrics || null);
-          }
-          setNextToken(data.nextToken || null);
-        } else {
-          setError(data.error || "Failed to fetch email logs");
-        }
-      } catch {
-        setError("Network error. Please try again.");
-      } finally {
-        setLoading(false);
-      }
+  // useInfiniteQuery owns the cursor, so there is no nextToken state to keep in
+  // step and no manual append -- which is what allowed a slow page to be
+  // concatenated onto a list it no longer belonged to.
+  const logsQuery = useInfiniteQuery({
+    queryKey: queryKeys.eventLogs(jobId ?? "", selectedEventType, recipientFilter, bounceCategory),
+    enabled: !!jobId,
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: EmailLogsResponse) => lastPage.nextToken ?? undefined,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams();
+      if (selectedEventType) params.append("eventType", selectedEventType);
+      if (recipientFilter) params.append("recipient", recipientFilter);
+      if (bounceCategory) params.append("bounceCategory", bounceCategory);
+      if (pageParam) params.append("nextToken", pageParam);
+      params.append("limit", "100");
+      return (await jsonOrThrow(
+        await authFetch(`${apiUrl}/email/events/logs/${jobId}?${params.toString()}`)
+      )) as EmailLogsResponse;
     },
-    [apiUrl, authFetch]
-  );
+  });
 
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
-
-  // Fetch logs when jobId or filters change (reset to first page)
-  useEffect(() => {
-    if (jobId) {
-      setNextToken(null);
-      setEvents([]);
-      fetchLogs(jobId, selectedEventType, recipientFilter, bounceCategory);
-    }
-  }, [jobId, selectedEventType, recipientFilter, bounceCategory, fetchLogs]);
+  const jobs = jobsQuery.data ?? [];
+  const loadingJobs = jobsQuery.isPending;
+  const events = logsQuery.data?.pages.flatMap((page) => page.events ?? []) ?? [];
+  // Metrics describe the whole filtered set, so they come from the first page.
+  const jobMetrics = logsQuery.data?.pages[0]?.jobMetrics ?? null;
+  const loading = logsQuery.isFetching;
+  const error = (logsQuery.error as Error | null)?.message ?? "";
 
   const handleLoadMore = () => {
-    if (jobId && !loading && nextToken) {
-      fetchLogs(jobId, selectedEventType, recipientFilter, bounceCategory, nextToken, true);
+    if (logsQuery.hasNextPage && !logsQuery.isFetchingNextPage) {
+      logsQuery.fetchNextPage();
     }
   };
 
@@ -380,7 +315,7 @@ export default function EmailLogs({
                   />
                 ))}
               </div>
-              {events.length > 0 && nextToken && (
+              {events.length > 0 && logsQuery.hasNextPage && (
                 <div style={{ marginTop: "1rem", textAlign: "center" }}>
                   <button
                     onClick={handleLoadMore}
@@ -408,43 +343,12 @@ export default function EmailLogs({
       {/* Recent Jobs List */}
       <div className="jobs-list">
         <h3>Recent Jobs</h3>
-        {loadingJobs ? (
-          <p>Loading jobs...</p>
-        ) : jobs.length === 0 ? (
-          <p>No jobs found.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>Sender</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr
-                  key={job.jobId}
-                  onClick={() => handleJobClick(job.jobId)}
-                  className={jobId === job.jobId ? "active" : ""}
-                >
-                  <td>{job.subject}</td>
-                  <td>{job.sender}</td>
-                  <td>
-                    <span className={`status-badge ${job.status}`}>{job.status}</span>
-                  </td>
-                  <td>
-                    {job.sent}/{job.totalRecipients}
-                    {job.failed > 0 && <span className="error"> ({job.failed} failed)</span>}
-                  </td>
-                  <td>{formatDate(job.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <JobsTable
+          jobs={jobs}
+          loading={loadingJobs}
+          selectedJobId={jobId}
+          onSelect={handleJobClick}
+        />
       </div>
     </div>
   );

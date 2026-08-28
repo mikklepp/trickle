@@ -1,7 +1,8 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
 import JobStatus from "./JobStatus";
 import { mockFetch } from "../test/fetchMock";
+import { renderWithQuery } from "../test/renderWithQuery";
 import type { AuthFetch } from "../utils/authFetch";
 
 const authFetch: AuthFetch = (input, init) => fetch(input, init);
@@ -27,7 +28,7 @@ const statusCalls = (calls: string[]) => calls.filter((c) => c.includes("/email/
 describe("JobStatus polling", () => {
   test("fetches the job on mount", async () => {
     const { calls } = mockFetch(ROUTES);
-    render(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
+    renderWithQuery(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
     await waitFor(() => expect(statusCalls(calls)).toBe(1));
   });
 
@@ -36,7 +37,7 @@ describe("JobStatus polling", () => {
   // so its behaviour is pinned before any migration touches it.
   test("keeps polling while the tab is visible", async () => {
     const { calls } = mockFetch(ROUTES);
-    render(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
+    renderWithQuery(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
     await waitFor(() => expect(statusCalls(calls)).toBe(1));
 
     const before = statusCalls(calls);
@@ -48,10 +49,16 @@ describe("JobStatus polling", () => {
 
   test("stops polling once the tab is hidden", async () => {
     const { calls } = mockFetch(ROUTES);
-    render(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
+    renderWithQuery(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
     await waitFor(() => expect(statusCalls(calls)).toBe(1));
 
+    // A real browser sets both; the old code read `hidden`, TanStack Query's
+    // focus manager reads `visibilityState`.
     Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    });
     document.dispatchEvent(new Event("visibilitychange"));
 
     const atHide = statusCalls(calls);
