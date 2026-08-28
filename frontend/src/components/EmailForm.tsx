@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import ReactQuill from "react-quill-new";
 import imageCompression from "browser-image-compression";
 import { format } from "date-fns";
@@ -73,12 +73,32 @@ function containsCRLF(text: string): boolean {
   return /[\r\n]/.test(text);
 }
 
+/**
+ * Previously-used senders, newest first. Older builds stored plain strings, so
+ * those are folded into the current shape on read.
+ */
+function readRecentSenders(): RecentSender[] {
+  const recent = localStorage.getItem("recentSenders");
+  if (!recent) return [];
+  try {
+    const parsed: unknown = JSON.parse(recent);
+    return Array.isArray(parsed)
+      ? parsed.map((item) => (typeof item === "string" ? { email: item } : (item as RecentSender)))
+      : [];
+  } catch (err) {
+    console.error("Failed to parse recent senders:", err);
+    return [];
+  }
+}
+
 export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailFormProps) {
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
   const [verifiedDomains, setVerifiedDomains] = useState<string[]>([]);
-  const [recentSenders, setRecentSenders] = useState<RecentSender[]>([]);
-  const [sender, setSender] = useState("");
-  const [senderName, setSenderName] = useState("");
+  // Read once while initialising rather than in a mount effect: this is local
+  // state restored from localStorage, not a subscription to anything.
+  const [recentSenders, setRecentSenders] = useState<RecentSender[]>(readRecentSenders);
+  const [sender, setSender] = useState(() => readRecentSenders()[0]?.email ?? "");
+  const [senderName, setSenderName] = useState(() => readRecentSenders()[0]?.name ?? "");
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
@@ -90,35 +110,6 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
   const [config, setConfig] = useState<Config>({ rateLimit: 60, maxAttachmentSize: 10485760 });
   const [quota, setQuota] = useState<Quota | null>(null);
 
-  useEffect(() => {
-    fetchSenders();
-    fetchConfig();
-    fetchQuota();
-    loadRecentSenders();
-  }, []);
-
-  const loadRecentSenders = () => {
-    const recent = localStorage.getItem("recentSenders");
-    if (recent) {
-      try {
-        const parsed = JSON.parse(recent);
-        // Handle backward compatibility: convert old string[] format to new RecentSender[] format
-        const senders: RecentSender[] = Array.isArray(parsed)
-          ? parsed.map((item) => (typeof item === "string" ? { email: item } : item))
-          : [];
-        setRecentSenders(senders);
-        if (senders.length > 0 && !sender) {
-          setSender(senders[0].email);
-          if (senders[0].name) {
-            setSenderName(senders[0].name);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to parse recent senders:", err);
-      }
-    }
-  };
-
   const saveRecentSender = (email: string, name: string = "") => {
     const newSender: RecentSender = { email, name: name || undefined };
     const recent = [newSender, ...recentSenders.filter((s) => s.email !== email)].slice(0, 5);
@@ -127,7 +118,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
     console.log("Saved recent senders:", recent);
   };
 
-  const fetchSenders = async () => {
+  const fetchSenders = useCallback(async () => {
     setLoadingSenders(true);
     try {
       const response = await authFetch(`${apiUrl}/senders`);
@@ -135,20 +126,20 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
       setVerifiedEmails(data.emails || []);
       setVerifiedDomains(data.domains || []);
 
-      // Set first available sender
-      if (!sender) {
-        if (data.emails && data.emails.length > 0) {
-          setSender(data.emails[0]);
-        }
+      // Default to the first verified sender, but never overwrite a choice the
+      // user (or the restored recent-sender) already made. Reading the current
+      // value functionally keeps `sender` out of this callback's dependencies.
+      if (data.emails && data.emails.length > 0) {
+        setSender((current) => current || data.emails[0]);
       }
     } catch {
       setError("Failed to fetch verified senders");
     } finally {
       setLoadingSenders(false);
     }
-  };
+  }, [apiUrl, authFetch]);
 
-  const fetchConfig = async () => {
+  const fetchConfig = useCallback(async () => {
     try {
       const response = await authFetch(`${apiUrl}/config`);
       const data = (await response.json()) as Config;
@@ -157,9 +148,9 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
       // Use defaults on error
       console.error("Failed to fetch config:", err);
     }
-  };
+  }, [apiUrl, authFetch]);
 
-  const fetchQuota = async () => {
+  const fetchQuota = useCallback(async () => {
     setLoadingQuota(true);
     try {
       const response = await authFetch(`${apiUrl}/account/quota`);
@@ -170,7 +161,13 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
     } finally {
       setLoadingQuota(false);
     }
-  };
+  }, [apiUrl, authFetch]);
+
+  useEffect(() => {
+    fetchSenders();
+    fetchConfig();
+    fetchQuota();
+  }, [fetchSenders, fetchConfig, fetchQuota]);
 
   const isValidSender = (email: string): boolean => {
     // Check if email exactly matches a verified email

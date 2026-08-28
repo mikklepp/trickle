@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { calculateETA } from "../utils/calculateETA";
 import type { AuthFetch } from "../utils/authFetch";
 
@@ -28,11 +28,7 @@ export default function Config({ apiUrl, authFetch }: ConfigProps) {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    fetchConfig();
-  }, []);
-
-  const fetchConfig = async () => {
+  const fetchConfig = useCallback(async () => {
     try {
       const response = await authFetch(`${apiUrl}/config`);
       const data = await response.json();
@@ -42,7 +38,11 @@ export default function Config({ apiUrl, authFetch }: ConfigProps) {
     } catch {
       setError("Failed to fetch config");
     }
-  };
+  }, [apiUrl, authFetch]);
+
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

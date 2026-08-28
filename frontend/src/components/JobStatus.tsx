@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { calculateETA } from "../utils/calculateETA";
 import type { AuthFetch } from "../utils/authFetch";
@@ -101,9 +101,6 @@ export default function JobStatus({
   const [isPageVisible, setIsPageVisible] = useState(true);
 
   // Fetch jobs list on mount
-  useEffect(() => {
-    fetchJobs();
-  }, []);
 
   // Track page visibility to pause polling when tab is hidden
   useEffect(() => {
@@ -115,26 +112,7 @@ export default function JobStatus({
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  useEffect(() => {
-    if (jobId) {
-      fetchJobStatus(jobId);
-    }
-  }, [jobId]);
-
-  // Auto-refresh while page is visible (to collect events even after job completion)
-  useEffect(() => {
-    if (!jobId || !jobData || !isPageVisible) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      fetchJobStatus(jobId);
-    }, AUTO_REFRESH_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [jobId, jobData, isPageVisible]);
-
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     setLoadingJobs(true);
     try {
       const response = await authFetch(`${apiUrl}/email/jobs`);
@@ -148,55 +126,85 @@ export default function JobStatus({
     } finally {
       setLoadingJobs(false);
     }
-  };
+  }, [apiUrl, authFetch]);
 
-  const fetchJobStatus = async (id: string) => {
-    if (!id) return;
+  const fetchEventMetrics = useCallback(
+    async (id: string) => {
+      if (!id) return;
 
-    setLoading(true);
-    setError("");
+      setLoadingMetrics(true);
+      try {
+        const response = await authFetch(`${apiUrl}/email/events/summary/${id}`);
+        const data = await response.json();
 
-    try {
-      const response = await authFetch(`${apiUrl}/email/status/${id}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setJobData(data);
-        // Notify parent of jobId change
-        if (onJobIdChange) {
-          onJobIdChange(id);
+        if (response.ok) {
+          setEventMetrics(data);
+        } else {
+          console.error("Failed to fetch event metrics:", data.error);
         }
-        // Fetch summary metrics for event type counts (for backward compatibility)
-        fetchEventMetrics(id);
-      } else {
-        setError(data.error || "Failed to fetch job status");
+      } catch (err) {
+        console.error("Failed to fetch event metrics:", err);
+      } finally {
+        setLoadingMetrics(false);
       }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [apiUrl, authFetch]
+  );
 
-  const fetchEventMetrics = async (id: string) => {
-    if (!id) return;
+  const fetchJobStatus = useCallback(
+    async (id: string) => {
+      if (!id) return;
 
-    setLoadingMetrics(true);
-    try {
-      const response = await authFetch(`${apiUrl}/email/events/summary/${id}`);
-      const data = await response.json();
+      setLoading(true);
+      setError("");
 
-      if (response.ok) {
-        setEventMetrics(data);
-      } else {
-        console.error("Failed to fetch event metrics:", data.error);
+      try {
+        const response = await authFetch(`${apiUrl}/email/status/${id}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          setJobData(data);
+          // Notify parent of jobId change
+          if (onJobIdChange) {
+            onJobIdChange(id);
+          }
+          // Fetch summary metrics for event type counts (for backward compatibility)
+          fetchEventMetrics(id);
+        } else {
+          setError(data.error || "Failed to fetch job status");
+        }
+      } catch {
+        setError("Network error. Please try again.");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch event metrics:", err);
-    } finally {
-      setLoadingMetrics(false);
+      // onJobIdChange is App's setCurrentJobId, which React guarantees is stable.
+    },
+    [apiUrl, authFetch, fetchEventMetrics, onJobIdChange]
+  );
+
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  useEffect(() => {
+    if (jobId) {
+      fetchJobStatus(jobId);
     }
-  };
+  }, [jobId, fetchJobStatus]);
+
+  // Auto-refresh while page is visible (to collect events even after job completion)
+  useEffect(() => {
+    if (!jobId || !jobData || !isPageVisible) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      fetchJobStatus(jobId);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [jobId, jobData, isPageVisible, fetchJobStatus]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

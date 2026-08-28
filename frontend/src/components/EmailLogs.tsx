@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import EventDetailCard from "./EventDetailCard";
 import type { AuthFetch } from "../utils/authFetch";
@@ -100,13 +100,6 @@ export default function EmailLogs({
   );
   const [recipientFilter, setRecipientFilter] = useState("");
 
-  // If user picks a non-Bounce event type, drop the bounce subfilter.
-  useEffect(() => {
-    if (selectedEventType !== "Bounce" && bounceCategory !== null) {
-      setBounceCategory(null);
-    }
-  }, [selectedEventType]);
-
   const eventTypes = [
     "Send",
     "Delivery",
@@ -118,21 +111,7 @@ export default function EmailLogs({
     "Click",
   ];
 
-  // Fetch jobs list on mount
-  useEffect(() => {
-    fetchJobs();
-  }, []);
-
-  // Fetch logs when jobId or filters change (reset to first page)
-  useEffect(() => {
-    if (jobId) {
-      setNextToken(null);
-      setEvents([]);
-      fetchLogs(jobId, selectedEventType, recipientFilter, bounceCategory);
-    }
-  }, [jobId, selectedEventType, recipientFilter, bounceCategory]);
-
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     setLoadingJobs(true);
     try {
       const response = await authFetch(`${apiUrl}/email/jobs`);
@@ -146,55 +125,71 @@ export default function EmailLogs({
     } finally {
       setLoadingJobs(false);
     }
-  };
+  }, [apiUrl, authFetch]);
 
-  const fetchLogs = async (
-    id: string,
-    eventType: string | null,
-    recipient: string,
-    category: "hard" | "soft" | null,
-    pageToken?: string | null,
-    append: boolean = false,
-    totalRecipients?: number
-  ) => {
-    if (!id) return;
+  const fetchLogs = useCallback(
+    async (
+      id: string,
+      eventType: string | null,
+      recipient: string,
+      category: "hard" | "soft" | null,
+      pageToken?: string | null,
+      append: boolean = false,
+      totalRecipients?: number
+    ) => {
+      if (!id) return;
 
-    setLoading(true);
-    if (!append) setError("");
+      setLoading(true);
+      if (!append) setError("");
 
-    try {
-      const params = new URLSearchParams();
-      if (eventType) params.append("eventType", eventType);
-      if (recipient) params.append("recipient", recipient);
-      if (category) params.append("bounceCategory", category);
-      if (pageToken) params.append("nextToken", pageToken);
-      if (totalRecipients && totalRecipients > 0) {
-        params.append("totalRecipients", totalRecipients.toString());
-      }
-      params.append("limit", "100");
-
-      const response = await authFetch(`${apiUrl}/email/events/logs/${id}?${params.toString()}`);
-      const data: EmailLogsResponse = await response.json();
-
-      if (response.ok) {
-        if (append) {
-          // Load more: append to existing events
-          setEvents([...events, ...(data.events || [])]);
-        } else {
-          // Initial load: replace events and metrics
-          setEvents(data.events || []);
-          setJobMetrics(data.jobMetrics || null);
+      try {
+        const params = new URLSearchParams();
+        if (eventType) params.append("eventType", eventType);
+        if (recipient) params.append("recipient", recipient);
+        if (category) params.append("bounceCategory", category);
+        if (pageToken) params.append("nextToken", pageToken);
+        if (totalRecipients && totalRecipients > 0) {
+          params.append("totalRecipients", totalRecipients.toString());
         }
-        setNextToken(data.nextToken || null);
-      } else {
-        setError(data.error || "Failed to fetch email logs");
+        params.append("limit", "100");
+
+        const response = await authFetch(`${apiUrl}/email/events/logs/${id}?${params.toString()}`);
+        const data: EmailLogsResponse = await response.json();
+
+        if (response.ok) {
+          if (append) {
+            // Load more: append to existing events
+            setEvents((prev) => [...prev, ...(data.events || [])]);
+          } else {
+            // Initial load: replace events and metrics
+            setEvents(data.events || []);
+            setJobMetrics(data.jobMetrics || null);
+          }
+          setNextToken(data.nextToken || null);
+        } else {
+          setError(data.error || "Failed to fetch email logs");
+        }
+      } catch {
+        setError("Network error. Please try again.");
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
+    },
+    [apiUrl, authFetch]
+  );
+
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  // Fetch logs when jobId or filters change (reset to first page)
+  useEffect(() => {
+    if (jobId) {
+      setNextToken(null);
+      setEvents([]);
+      fetchLogs(jobId, selectedEventType, recipientFilter, bounceCategory);
     }
-  };
+  }, [jobId, selectedEventType, recipientFilter, bounceCategory, fetchLogs]);
 
   const handleLoadMore = () => {
     if (jobId && !loading && nextToken) {
@@ -244,7 +239,14 @@ export default function EmailLogs({
             <label>Event Type</label>
             <select
               value={selectedEventType || ""}
-              onChange={(e) => setSelectedEventType(e.target.value || null)}
+              onChange={(e) => {
+                const next = e.target.value || null;
+                setSelectedEventType(next);
+                // The bounce sub-filter only means anything for Bounce events;
+                // clear it here, at the point the choice is made, rather than
+                // reacting to the change in an effect afterwards.
+                if (next !== "Bounce") setBounceCategory(null);
+              }}
             >
               <option value="">All Events</option>
               {eventTypes.map((type) => (

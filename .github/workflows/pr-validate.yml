@@ -44,22 +44,34 @@ jobs:
       - name: Build frontend
         run: npm run build --workspace=frontend
 
-      # Synthesize the CDK app. This used to be skipped because synth needs AWS
-      # (STS account lookup + Route53 HostedZone.fromLookup) and Dependabot PRs
-      # get no secrets -- which meant anything breaking only the deploy path
-      # passed PR checks and failed on push to main. cdk/cdk.context.json now
-      # caches the hosted-zone lookup, and the account is supplied directly, so
-      # this runs credential-free. It also exercises esbuild bundling of all 12
-      # Lambdas, which nothing else in CI covers.
+      # Synthesize the CDK app, which is otherwise never exercised by CI:
+      # synth needs AWS (STS account lookup + Route53 HostedZone.fromLookup) and
+      # Dependabot PRs get no secrets, so anything breaking only the deploy path
+      # used to pass PR checks and fail on push to main. Rather than commit the
+      # real cdk.context.json (it would put the production account and hosted
+      # zone ids in the repo), seed a throwaway one with entirely fake values --
+      # synth only needs the lookup to resolve, not to be true. The file is
+      # gitignored and never leaves the runner.
+      #
+      # This is also CI's only coverage of esbuild bundling all 12 Lambdas.
       - name: Synth CDK app
         working-directory: cdk
         env:
-          CDK_DEFAULT_ACCOUNT: "917371804581"
+          CDK_DEFAULT_ACCOUNT: "000000000000"
           CDK_REGION: eu-west-1
           CDK_STAGE: ci
           AUTH_USERNAME: ci
           AUTH_PASSWORD: ci
-        run: npx cdk synth --all --quiet
+        run: |
+          cat > cdk.context.json <<'JSON'
+          {
+            "hosted-zone:account=000000000000:domainName=qed.fi:region=eu-west-1":
+              { "Id": "/hostedzone/ZCIDUMMYCIDUMMY01", "Name": "qed.fi." },
+            "hosted-zone:account=000000000000:domainName=qed.fi:region=us-east-1":
+              { "Id": "/hostedzone/ZCIDUMMYCIDUMMY01", "Name": "qed.fi." }
+          }
+          JSON
+          npx cdk synth --all --quiet
 
       - name: Check formatting
         run: npm run format:check
