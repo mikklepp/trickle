@@ -15,8 +15,8 @@ import {
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { SESv2Client, ListEmailIdentitiesCommand, GetAccountCommand } from "@aws-sdk/client-sesv2";
 import { randomUUID } from "crypto";
-import { verifyToken } from "./auth.js";
-import { computeJobMetrics } from "./event-metrics.js";
+import { verifyToken } from "./auth.ts";
+import { computeJobMetrics } from "./event-metrics.ts";
 
 const dynamoClient = new DynamoDBClient({});
 const dynamo = DynamoDBDocumentClient.from(dynamoClient);

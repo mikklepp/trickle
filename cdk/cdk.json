@@ -4,16 +4,9 @@
     "include": [
       "bin/**/*.ts",
       "lib/**/*.ts",
-      "../backend/dist/**/*.js",
+      "../backend/functions/**/*.ts",
       "../frontend/dist/**/*.{js,css,html,json}"
     ],
-    "exclude": [
-      "node_modules",
-      "cdk.out",
-      "**/*.d.ts",
-      "**/*.map",
-      "../backend/dist/node_modules/**",
-      "../frontend/dist/**/*.map"
-    ]
+    "exclude": ["node_modules", "cdk.out", "**/*.d.ts", "**/*.map", "../frontend/dist/**/*.map"]
   }
 }

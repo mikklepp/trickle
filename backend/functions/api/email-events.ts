@@ -1,8 +1,8 @@
 import { DynamoDBClient, QueryCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
-import { verifyToken } from "./auth.js";
-import { classifyEvent, EventClassification } from "./event-classifier.js";
-import { computeJobMetrics } from "./event-metrics.js";
+import { verifyToken } from "./auth.ts";
+import { classifyEvent, type EventClassification } from "./event-classifier.ts";
+import { computeJobMetrics } from "./event-metrics.ts";
 
 const dynamodb = new DynamoDBClient({});
 const tableName = process.env.EMAIL_EVENTS_TABLE_NAME || "trickle-email-events";

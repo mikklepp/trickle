@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -17,6 +18,34 @@ import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as cloudfrontOrigins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import { Construct } from "constructs";
+import * as path from "node:path";
+import { HANDLERS, type HandlerId } from "../../backend/functions/handlers.ts";
+
+// Every Lambda is bundled from TypeScript source by esbuild at synth time.
+// On Node 24 runtimes CDK marks @aws-sdk/* external by default -- the SDK
+// ships in the runtime -- so bundles stay small. Deliberately not minified:
+// the size saved is negligible next to keeping CloudWatch stack traces
+// readable on a production service.
+const LAMBDA_BUNDLING: nodejs.BundlingOptions = {
+  format: nodejs.OutputFormat.ESM,
+  target: "node24",
+};
+
+const BACKEND_FUNCTIONS = path.join(import.meta.dirname, "../../backend/functions");
+
+/**
+ * Resolves a construct id to its esbuild entry point and handler export,
+ * so the wiring lives in exactly one place (backend/functions/handlers.ts)
+ * and is covered by handlers.test.ts.
+ */
+function handlerSource(id: HandlerId) {
+  const { module: modulePath, export: exportName } = HANDLERS[id];
+  return {
+    entry: path.join(BACKEND_FUNCTIONS, modulePath),
+    handler: exportName,
+    bundling: LAMBDA_BUNDLING,
+  };
+}
 
 export interface TrickleStackProps extends cdk.StackProps {
   stage: string;
@@ -156,11 +185,10 @@ export class TrickleStack extends cdk.Stack {
     });
 
     // Create Lambda to process SES events from SNS and write to DynamoDB
-    const sesEventsProcessor = new lambda.Function(this, "SESEventsProcessor", {
+    const sesEventsProcessor = new nodejs.NodejsFunction(this, "SESEventsProcessor", {
       functionName: `trickle-${stage}-ses-events-processor`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/ses-events-processor.handler",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("SESEventsProcessor"),
       environment: {
         EMAIL_EVENTS_TABLE: emailEventsTable.tableName,
       },
@@ -183,11 +211,10 @@ export class TrickleStack extends cdk.Stack {
     // ========== Lambda Functions ==========
 
     // Worker Lambda (invoked by EventBridge Scheduler)
-    const workerFunction = new lambda.Function(this, "EmailWorker", {
+    const workerFunction = new nodejs.NodejsFunction(this, "EmailWorker", {
       functionName: `trickle-${stage}-email-worker`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "worker/index.handler",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("EmailWorker"),
       timeout: cdk.Duration.minutes(2),
       deadLetterQueue: emailDLQ,
       environment: {
@@ -241,92 +268,82 @@ export class TrickleStack extends cdk.Stack {
     };
 
     // API Lambda functions
-    const authLoginFunction = new lambda.Function(this, "AuthLogin", {
+    const authLoginFunction = new nodejs.NodejsFunction(this, "AuthLogin", {
       functionName: `trickle-${stage}-auth-login`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/auth.login",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("AuthLogin"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const sendersListFunction = new lambda.Function(this, "SendersList", {
+    const sendersListFunction = new nodejs.NodejsFunction(this, "SendersList", {
       functionName: `trickle-${stage}-senders-list`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/senders.list",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("SendersList"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const emailSendFunction = new lambda.Function(this, "EmailSend", {
+    const emailSendFunction = new nodejs.NodejsFunction(this, "EmailSend", {
       functionName: `trickle-${stage}-email-send`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/email.send",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("EmailSend"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const emailListFunction = new lambda.Function(this, "EmailList", {
+    const emailListFunction = new nodejs.NodejsFunction(this, "EmailList", {
       functionName: `trickle-${stage}-email-list`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/email.list",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("EmailList"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const emailStatusFunction = new lambda.Function(this, "EmailStatus", {
+    const emailStatusFunction = new nodejs.NodejsFunction(this, "EmailStatus", {
       functionName: `trickle-${stage}-email-status`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/email.status",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("EmailStatus"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const configGetFunction = new lambda.Function(this, "ConfigGet", {
+    const configGetFunction = new nodejs.NodejsFunction(this, "ConfigGet", {
       functionName: `trickle-${stage}-config-get`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/config.get",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("ConfigGet"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const configUpdateFunction = new lambda.Function(this, "ConfigUpdate", {
+    const configUpdateFunction = new nodejs.NodejsFunction(this, "ConfigUpdate", {
       functionName: `trickle-${stage}-config-update`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/config.update",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("ConfigUpdate"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const accountQuotaFunction = new lambda.Function(this, "AccountQuota", {
+    const accountQuotaFunction = new nodejs.NodejsFunction(this, "AccountQuota", {
       functionName: `trickle-${stage}-account-quota`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/account.quota",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("AccountQuota"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
 
-    const emailEventsSummaryFunction = new lambda.Function(this, "EmailEventsSummary", {
+    const emailEventsSummaryFunction = new nodejs.NodejsFunction(this, "EmailEventsSummary", {
       functionName: `trickle-${stage}-email-events-summary`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/email-events.summary",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("EmailEventsSummary"),
       timeout: cdk.Duration.seconds(60),
       environment: apiEnvironment,
     });
 
-    const emailEventsLogsFunction = new lambda.Function(this, "EmailEventsLogs", {
+    const emailEventsLogsFunction = new nodejs.NodejsFunction(this, "EmailEventsLogs", {
       functionName: `trickle-${stage}-email-events-logs`,
       runtime: lambda.Runtime.NODEJS_24_X,
-      handler: "api/email-events.logs",
-      code: lambda.Code.fromAsset("../backend/dist"),
+      ...handlerSource("EmailEventsLogs"),
       timeout: cdk.Duration.seconds(60),
       environment: apiEnvironment,
     });
