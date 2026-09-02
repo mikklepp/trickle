@@ -76,5 +76,13 @@ jobs:
           JSON
           npx cdk synth --all --quiet
 
+      # Import every bundle synth just produced, the way the runtime will.
+      # Bundling can succeed and still emit code that dies on import: a
+      # CommonJS dependency doing require() at runtime becomes an esbuild shim
+      # that throws. That shipped once and took every JWT-using function down,
+      # because nothing between synth and production ever executed a bundle.
+      - name: Load synthesized Lambda bundles
+        run: node scripts/check-lambda-bundles.mjs cdk/cdk.out
+
       - name: Check formatting
         run: npm run format:check
