@@ -26,26 +26,55 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # NOTE: PR validation deliberately does NOT run `cdk synth`. Synth needs
-      # AWS (STS account lookup + Route53 HostedZone.fromLookup in the CDK app),
-      # and Dependabot PRs run without repo secrets, so any AWS step fails before
-      # the build. We validate everything that can run credential-free instead;
-      # synth is exercised on the deploy workflow (push to main).
-
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
 
       - name: Build backend
         run: npm run build --workspace=backend
 
-      # Asserts every (module, export) pair the CDK stack wires actually
-      # resolves. esbuild verifies the entry *file* at synth; nothing else
-      # verifies the *export*, so a renamed handler would reach production.
+      # Backend: asserts every (module, export) pair the CDK stack wires
+      # actually resolves -- esbuild verifies the entry *file* at synth, nothing
+      # else verifies the *export* -- plus unit tests for the pure logic.
+      # Frontend: component tests under Vitest/jsdom. These cannot run on the
+      # backend's `node --test`, because Node strips TypeScript types but does
+      # not transform JSX.
       - name: Test
         run: npm test
 
       - name: Build frontend
         run: npm run build --workspace=frontend
+
+      # Synthesize the CDK app, which is otherwise never exercised by CI:
+      # synth needs AWS (STS account lookup + Route53 HostedZone.fromLookup) and
+      # Dependabot PRs get no secrets, so anything breaking only the deploy path
+      # used to pass PR checks and fail on push to main. Rather than commit the
+      # real cdk.context.json (it would put the production account and hosted
+      # zone ids in the repo), seed a throwaway one with entirely fake values --
+      # synth only needs the lookup to resolve, not to be true. The file is
+      # gitignored and never leaves the runner.
+      #
+      # This is also CI's only coverage of esbuild bundling all 12 Lambdas.
+      - name: Synth CDK app
+        working-directory: cdk
+        env:
+          CDK_DEFAULT_ACCOUNT: "000000000000"
+          CDK_REGION: eu-west-1
+          CDK_STAGE: ci
+          AUTH_USERNAME: ci
+          AUTH_PASSWORD: ci
+        run: |
+          cat > cdk.context.json <<'JSON'
+          {
+            "hosted-zone:account=000000000000:domainName=qed.fi:region=eu-west-1":
+              { "Id": "/hostedzone/ZCIDUMMYCIDUMMY01", "Name": "qed.fi." },
+            "hosted-zone:account=000000000000:domainName=qed.fi:region=us-east-1":
+              { "Id": "/hostedzone/ZCIDUMMYCIDUMMY01", "Name": "qed.fi." }
+          }
+          JSON
+          npx cdk synth --all --quiet
 
       - name: Check formatting
         run: npm run format:check

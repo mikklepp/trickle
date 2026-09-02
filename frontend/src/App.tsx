@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import "./App.css";
 import Login from "./components/Login";
 import EmailForm from "./components/EmailForm";
@@ -10,30 +10,36 @@ import { makeAuthFetch } from "./utils/authFetch";
 
 const API_URL = getApiUrl();
 
+// A ?jobId=... query parameter deep-links straight to that job's status view.
+function jobIdFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get("jobId");
+}
+
 function App() {
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
-  const [view, setView] = useState<"email" | "status" | "logs" | "config">("email");
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
+  // The deep link is resolved while initialising rather than in an effect, so an
+  // already-authenticated load lands on the right view in a single render.
+  const [view, setView] = useState<"email" | "status" | "logs" | "config">(() =>
+    localStorage.getItem("token") && jobIdFromUrl() ? "status" : "email"
+  );
+  const [currentJobId, setCurrentJobId] = useState<string | null>(() =>
+    localStorage.getItem("token") ? jobIdFromUrl() : null
+  );
   const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
   const [selectedBounceCategory, setSelectedBounceCategory] = useState<"hard" | "soft" | null>(
     null
   );
+
+  // Captured at first render because the URL-sync effect below strips the
+  // parameter as soon as it runs with no job selected -- which is exactly the
+  // unauthenticated case, where the link still has to survive logging in.
+  const deepLinkedJobId = useRef(jobIdFromUrl());
 
   useEffect(() => {
     if (token) {
       localStorage.setItem("token", token);
     } else {
       localStorage.removeItem("token");
-    }
-  }, [token]);
-
-  // Check for jobId query parameter on mount
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const jobId = params.get("jobId");
-    if (jobId && token) {
-      setCurrentJobId(jobId);
-      setView("status");
     }
   }, [token]);
 
@@ -61,6 +67,18 @@ function App() {
     setView("logs");
   };
 
+  // Consuming the deep link here, rather than in an effect keyed on `token`,
+  // keeps it out of the render cycle: it applies at the moment a session
+  // starts, which is the only moment it is meaningful.
+  const handleLogin = (newToken: string) => {
+    setToken(newToken);
+    const jobId = deepLinkedJobId.current;
+    if (jobId) {
+      setCurrentJobId(jobId);
+      setView("status");
+    }
+  };
+
   const handleLogout = () => {
     setToken(null);
     setView("email");
@@ -72,7 +90,7 @@ function App() {
   const authFetch = useMemo(() => (token ? makeAuthFetch(token, handleLogout) : null), [token]);
 
   if (!token || !authFetch) {
-    return <Login apiUrl={API_URL} onLogin={setToken} />;
+    return <Login apiUrl={API_URL} onLogin={handleLogin} />;
   }
 
   return (

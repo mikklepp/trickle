@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { jsonOrThrow, queryKeys } from "../queryKeys";
+import JobsTable, { type JobListItem } from "./JobsTable";
+import { formatDate } from "../utils/formatDate";
 import { calculateETA } from "../utils/calculateETA";
 import type { AuthFetch } from "../utils/authFetch";
 
@@ -11,11 +14,6 @@ const AUTO_REFRESH_INTERVAL_MS = 5000; // 5 seconds
  * Formats an ISO date string in local time
  * Example: 2025-10-28 14:12
  */
-function formatDate(isoString: string): string {
-  const date = new Date(isoString);
-  return format(date, "yyyy-MM-dd HH:mm");
-}
-
 interface JobStatusProps {
   apiUrl: string;
   authFetch: AuthFetch;
@@ -72,17 +70,6 @@ interface JobData {
   metrics?: JobMetrics;
 }
 
-interface JobListItem {
-  jobId: string;
-  status: string;
-  sender: string;
-  subject: string;
-  totalRecipients: number;
-  sent: number;
-  failed: number;
-  createdAt: string;
-}
-
 export default function JobStatus({
   apiUrl,
   authFetch,
@@ -91,121 +78,65 @@ export default function JobStatus({
   onNavigateToLogs,
 }: JobStatusProps) {
   const [searchJobId, setSearchJobId] = useState(jobId || "");
-  const [jobData, setJobData] = useState<JobData | null>(null);
-  const [eventMetrics, setEventMetrics] = useState<EventMetrics | null>(null);
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-  const [loadingMetrics, setLoadingMetrics] = useState(false);
-  const [isPageVisible, setIsPageVisible] = useState(true);
+  // The jobId prop always seeds the selection. When a parent owns it (App does)
+  // selecting a job just tells the parent, and the prop comes back changed; the
+  // local override only carries an uncontrolled usage, where nothing else would.
+  const [uncontrolledJobId, setUncontrolledJobId] = useState<string | null>(null);
+  const activeJobId = uncontrolledJobId ?? jobId;
 
-  // Fetch jobs list on mount
-  useEffect(() => {
-    fetchJobs();
-  }, []);
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.jobs,
+    queryFn: async () =>
+      ((await jsonOrThrow(await authFetch(`${apiUrl}/email/jobs`))) as { jobs: JobListItem[] })
+        .jobs,
+  });
 
-  // Track page visibility to pause polling when tab is hidden
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      setIsPageVisible(!document.hidden);
-    };
+  // refetchInterval replaces the hand-rolled setInterval, and
+  // refetchIntervalInBackground: false replaces the visibilitychange listener
+  // that used to pause it.
+  const polling = {
+    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    enabled: !!activeJobId,
+  } as const;
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
+  const statusQuery = useQuery({
+    queryKey: queryKeys.jobStatus(activeJobId ?? ""),
+    queryFn: async () =>
+      (await jsonOrThrow(await authFetch(`${apiUrl}/email/status/${activeJobId}`))) as JobData,
+    ...polling,
+  });
 
-  useEffect(() => {
-    if (jobId) {
-      fetchJobStatus(jobId);
-    }
-  }, [jobId]);
+  const metricsQuery = useQuery({
+    queryKey: queryKeys.eventsSummary(activeJobId ?? ""),
+    queryFn: async () =>
+      (await jsonOrThrow(
+        await authFetch(`${apiUrl}/email/events/summary/${activeJobId}`)
+      )) as EventMetrics,
+    ...polling,
+  });
 
-  // Auto-refresh while page is visible (to collect events even after job completion)
-  useEffect(() => {
-    if (!jobId || !jobData || !isPageVisible) {
-      return;
-    }
+  const jobs = jobsQuery.data ?? [];
+  const jobData = statusQuery.data ?? null;
+  const eventMetrics = metricsQuery.data ?? null;
+  const loading = statusQuery.isFetching;
+  const loadingJobs = jobsQuery.isPending;
+  const loadingMetrics = metricsQuery.isFetching;
+  const error = (statusQuery.error as Error | null)?.message ?? "";
 
-    const interval = setInterval(() => {
-      fetchJobStatus(jobId);
-    }, AUTO_REFRESH_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [jobId, jobData, isPageVisible]);
-
-  const fetchJobs = async () => {
-    setLoadingJobs(true);
-    try {
-      const response = await authFetch(`${apiUrl}/email/jobs`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setJobs(data.jobs);
-      }
-    } catch (err) {
-      console.error("Failed to fetch jobs:", err);
-    } finally {
-      setLoadingJobs(false);
-    }
-  };
-
-  const fetchJobStatus = async (id: string) => {
-    if (!id) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const response = await authFetch(`${apiUrl}/email/status/${id}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setJobData(data);
-        // Notify parent of jobId change
-        if (onJobIdChange) {
-          onJobIdChange(id);
-        }
-        // Fetch summary metrics for event type counts (for backward compatibility)
-        fetchEventMetrics(id);
-      } else {
-        setError(data.error || "Failed to fetch job status");
-      }
-    } catch (err) {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchEventMetrics = async (id: string) => {
-    if (!id) return;
-
-    setLoadingMetrics(true);
-    try {
-      const response = await authFetch(`${apiUrl}/email/events/summary/${id}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setEventMetrics(data);
-      } else {
-        console.error("Failed to fetch event metrics:", data.error);
-      }
-    } catch (err) {
-      console.error("Failed to fetch event metrics:", err);
-    } finally {
-      setLoadingMetrics(false);
-    }
+  const selectJob = (id: string) => {
+    setSearchJobId(id);
+    if (onJobIdChange) onJobIdChange(id);
+    else setUncontrolledJobId(id);
   };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchJobStatus(searchJobId);
+    selectJob(searchJobId);
   };
 
   const handleJobClick = (id: string) => {
-    setSearchJobId(id);
-    fetchJobStatus(id);
+    selectJob(id);
   };
 
   return (
@@ -533,43 +464,12 @@ export default function JobStatus({
 
       <div className="jobs-list">
         <h3>Recent Jobs</h3>
-        {loadingJobs ? (
-          <p>Loading jobs...</p>
-        ) : jobs.length === 0 ? (
-          <p>No jobs found.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>Sender</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr
-                  key={job.jobId}
-                  onClick={() => handleJobClick(job.jobId)}
-                  className={jobData?.jobId === job.jobId ? "active" : ""}
-                >
-                  <td>{job.subject}</td>
-                  <td>{job.sender}</td>
-                  <td>
-                    <span className={`status-badge ${job.status}`}>{job.status}</span>
-                  </td>
-                  <td>
-                    {job.sent}/{job.totalRecipients}
-                    {job.failed > 0 && <span className="error"> ({job.failed} failed)</span>}
-                  </td>
-                  <td>{formatDate(job.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <JobsTable
+          jobs={jobs}
+          loading={loadingJobs}
+          selectedJobId={jobData?.jobId ?? null}
+          onSelect={handleJobClick}
+        />
       </div>
     </div>
   );
