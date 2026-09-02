@@ -1,4 +1,4 @@
-import jwt, { type JwtPayload } from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 import { getSecrets } from "../shared/secrets.ts";
 
 let authSecret: string;
@@ -7,9 +7,17 @@ let validPassword: string;
 let secretsInitialized = false;
 
 // Custom JWT payload interface
-interface TrickleJwtPayload extends JwtPayload {
+interface TrickleJwtPayload {
   username: string;
   userId: string;
+}
+
+const ISSUER = "trickle";
+const ALGORITHM = "HS256";
+
+/** HMAC key derived from the shared secret; jose takes raw bytes. */
+function signingKey(): Uint8Array {
+  return new TextEncoder().encode(authSecret);
 }
 
 // Initialize secrets on first use
@@ -38,19 +46,16 @@ async function initializeSecrets() {
  * Creates a JWT token following RFC 7519 standard
  * Includes standard claims (iat, exp) and custom claims (username, userId)
  */
-export function createToken(username: string, userId: string): string {
-  const payload: TrickleJwtPayload = {
-    username,
-    userId,
-    sub: userId, // Standard JWT subject claim
-  };
-
-  // Sign with HS256 algorithm, 24-hour expiration
-  return jwt.sign(payload, authSecret, {
-    algorithm: "HS256",
-    expiresIn: "24h",
-    issuer: "trickle",
-  });
+export async function createToken(username: string, userId: string): Promise<string> {
+  // Sign with HS256, 24-hour expiration. Tokens are byte-compatible with the
+  // ones jsonwebtoken issued, so sessions survive this change.
+  return new SignJWT({ username, userId })
+    .setProtectedHeader({ alg: ALGORITHM })
+    .setSubject(userId) // Standard JWT subject claim
+    .setIssuer(ISSUER)
+    .setIssuedAt()
+    .setExpirationTime("24h")
+    .sign(signingKey());
 }
 
 /**
@@ -65,10 +70,11 @@ export async function verifyToken(
     await initializeSecrets();
 
     // Verify token signature and expiration
-    const decoded = jwt.verify(token, authSecret, {
-      algorithms: ["HS256"],
-      issuer: "trickle",
-    }) as TrickleJwtPayload;
+    const { payload } = await jwtVerify(token, signingKey(), {
+      algorithms: [ALGORITHM],
+      issuer: ISSUER,
+    });
+    const decoded = payload as unknown as TrickleJwtPayload;
 
     // Extract required claims
     if (!decoded.username || !decoded.userId) {
@@ -76,7 +82,7 @@ export async function verifyToken(
     }
 
     return { username: decoded.username, userId: decoded.userId };
-  } catch (error) {
+  } catch {
     // Token verification failed (invalid signature, expired, malformed, etc.)
     return null;
   }
@@ -97,7 +103,7 @@ export async function login(event: any) {
     // TODO: Integrate with Cognito or proper auth provider
     if (username === VALID_USERNAME && password === VALID_PASSWORD) {
       const userId = "default-user";
-      const token = createToken(username, userId);
+      const token = await createToken(username, userId);
 
       return {
         statusCode: 200,
