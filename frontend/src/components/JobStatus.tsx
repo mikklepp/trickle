@@ -8,7 +8,8 @@ import type { AuthFetch } from "../utils/authFetch";
 
 // Auto-refresh interval in milliseconds (while page is visible)
 // Collects SES events that arrive during and after job completion
-const AUTO_REFRESH_INTERVAL_MS = 5000; // 5 seconds
+const AUTO_REFRESH_INTERVAL_MS = 5000; // while a job is still moving
+const SETTLED_REFRESH_INTERVAL_MS = 30000; // once it has finished, to catch late events
 
 /**
  * Formats an ISO date string in local time
@@ -94,8 +95,9 @@ export default function JobStatus({
   // refetchInterval replaces the hand-rolled setInterval, and
   // refetchIntervalInBackground: false replaces the visibilitychange listener
   // that used to pause it.
+  const isSettled = (status?: string) => status === "completed" || status === "failed";
+
   const polling = {
-    refetchInterval: AUTO_REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: false,
     enabled: !!activeJobId,
   } as const;
@@ -105,6 +107,10 @@ export default function JobStatus({
     queryFn: async () =>
       (await jsonOrThrow(await authFetch(`${apiUrl}/email/status/${activeJobId}`))) as JobData,
     ...polling,
+    // A finished job still accrues events (bounces, complaints, opens) for a
+    // while, so keep watching -- just far less insistently.
+    refetchInterval: (query) =>
+      isSettled(query.state.data?.status) ? SETTLED_REFRESH_INTERVAL_MS : AUTO_REFRESH_INTERVAL_MS,
   });
 
   const metricsQuery = useQuery({
@@ -114,14 +120,17 @@ export default function JobStatus({
         await authFetch(`${apiUrl}/email/events/summary/${activeJobId}`)
       )) as EventMetrics,
     ...polling,
+    refetchInterval: isSettled(statusQuery.data?.status)
+      ? SETTLED_REFRESH_INTERVAL_MS
+      : AUTO_REFRESH_INTERVAL_MS,
   });
 
   const jobs = jobsQuery.data ?? [];
   const jobData = statusQuery.data ?? null;
   const eventMetrics = metricsQuery.data ?? null;
-  const loading = statusQuery.isFetching;
+  const loading = statusQuery.isPending;
   const loadingJobs = jobsQuery.isPending;
-  const loadingMetrics = metricsQuery.isFetching;
+  const loadingMetrics = metricsQuery.isPending;
   const error = (statusQuery.error as Error | null)?.message ?? "";
 
   const selectJob = (id: string) => {

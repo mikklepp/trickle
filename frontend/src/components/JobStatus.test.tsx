@@ -26,6 +26,34 @@ afterEach(() => vi.useRealTimers());
 const statusCalls = (calls: string[]) => calls.filter((c) => c.includes("/email/status/")).length;
 
 describe("JobStatus polling", () => {
+  // isFetching is true on every background poll, so using it for UI state made
+  // the metrics panel disappear and the search button flip to "Loading..."
+  // every few seconds. Only the first load should show loading state.
+  test("does not flash loading state on background polls", async () => {
+    const { calls } = mockFetch(ROUTES);
+    const { getByRole } = renderWithQuery(
+      <JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />
+    );
+    await waitFor(() => expect(statusCalls(calls)).toBe(1));
+
+    const before = statusCalls(calls);
+    await vi.waitFor(() => expect(statusCalls(calls)).toBeGreaterThan(before), {
+      timeout: 9_000,
+      interval: 250,
+    });
+    expect(getByRole("button", { name: /check status/i })).toBeEnabled();
+  }, 15_000);
+
+  test("backs off polling once the job has settled", async () => {
+    const { calls } = mockFetch({ ...ROUTES, "/email/status/": { ...JOB, status: "completed" } });
+    renderWithQuery(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
+    await waitFor(() => expect(statusCalls(calls)).toBe(1));
+
+    // At the active 5s cadence this window would produce several more calls.
+    await new Promise((r) => setTimeout(r, 12_000));
+    expect(statusCalls(calls)).toBe(1);
+  }, 20_000);
+
   test("fetches the job on mount", async () => {
     const { calls } = mockFetch(ROUTES);
     renderWithQuery(<JobStatus apiUrl="http://api" authFetch={authFetch} jobId="job-1" />);
