@@ -49,3 +49,5 @@ jobs:
           AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
           AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          # Repository variable; unset means alarms are created but notify nobody.
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}

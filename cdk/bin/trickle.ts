@@ -79,6 +79,7 @@ async function main() {
     authPassword,
     authSecret,
     frontendCertificateArn: certificateStack.certificateArn,
+    alertEmail: process.env.ALERT_EMAIL || undefined,
     tags: {
       Stage: stage,
       Project: "Trickle",

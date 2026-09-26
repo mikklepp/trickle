@@ -17,6 +17,9 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as cloudfrontOrigins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as lambdaDestinations from "aws-cdk-lib/aws-lambda-destinations";
 import { Construct } from "constructs";
 import * as path from "node:path";
 import { HANDLERS, type HandlerId } from "../../backend/functions/handlers.ts";
@@ -53,6 +56,8 @@ export interface TrickleStackProps extends cdk.StackProps {
   authPassword: string;
   authSecret: string;
   frontendCertificateArn: string;
+  /** Where operational alarms are emailed. Omitted: alarms exist but notify nobody. */
+  alertEmail?: string;
 }
 
 export class TrickleStack extends cdk.Stack {
@@ -130,12 +135,35 @@ export class TrickleStack extends cdk.Stack {
       removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
-    // Email events table (stores SES events - Send, Delivery, Bounce, Complaint, Open, Click, etc)
-    // TTL: 30 days (aligned with jobs table retention to ensure events are accessible within job lifetime)
-    const emailEventsTable = new dynamodb.Table(this, "EmailEventsTable", {
+    // Legacy email events table, keyed by *processing* time: same-millisecond
+    // events overwrote each other and SNS redeliveries duplicated rows. Nothing
+    // reads or writes it any more; it is kept only so
+    // scripts/backfill-events-v2.mjs can copy its last 30 days into the v2
+    // table, and is removed once that retention window has passed.
+    const legacyEmailEventsTable = new dynamodb.Table(this, "EmailEventsTable", {
       tableName: `trickle-email-events-${stage}`,
       partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "timestamp", type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: "ttl",
+    });
+
+    legacyEmailEventsTable.addGlobalSecondaryIndex({
+      indexName: "recipientIndex",
+      partitionKey: { name: "recipient", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "timestamp", type: dynamodb.AttributeType.NUMBER },
+    });
+
+    // Email events table (stores SES events - Send, Delivery, Bounce, Complaint, Open, Click, etc)
+    // TTL: 30 days (aligned with jobs table retention to ensure events are accessible within job lifetime)
+    // The sort key is derived from the SES event itself (event time, message,
+    // type, recipient), so redelivered notifications overwrite instead of
+    // duplicating -- see buildEventRows in ses-events-processor.ts.
+    const emailEventsTable = new dynamodb.Table(this, "EmailEventsTableV2", {
+      tableName: `trickle-email-events-v2-${stage}`,
+      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "eventKey", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       timeToLiveAttribute: "ttl",
@@ -158,8 +186,12 @@ export class TrickleStack extends cdk.Stack {
     });
 
     // Create SES Configuration Set
+    // Suppression at the configuration-set level: SES itself refuses to send to
+    // an address that has hard-bounced or complained, rather than relying on
+    // someone acting on the "remove hard bounces" advice before the next job.
     const configSet = new ses.CfnConfigurationSet(this, "EmailConfigurationSet", {
       name: configurationSetName,
+      suppressionOptions: { suppressedReasons: ["BOUNCE", "COMPLAINT"] },
     });
 
     // Add SNS event destination for email event tracking
@@ -184,6 +216,13 @@ export class TrickleStack extends cdk.Stack {
       },
     });
 
+    // SNS invokes the processor asynchronously; events that still fail after
+    // Lambda's retries land here instead of vanishing, and are alarmed below.
+    const sesEventsFailures = new sqs.Queue(this, "SESEventsFailures", {
+      queueName: `trickle-ses-events-failures-${stage}`,
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
     // Create Lambda to process SES events from SNS and write to DynamoDB
     const sesEventsProcessor = new nodejs.NodejsFunction(this, "SESEventsProcessor", {
       functionName: `trickle-${stage}-ses-events-processor`,
@@ -194,6 +233,8 @@ export class TrickleStack extends cdk.Stack {
       },
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
+      retryAttempts: 2,
+      onFailure: new lambdaDestinations.SqsDestination(sesEventsFailures),
     });
 
     // Subscribe Lambda to SNS topic
@@ -636,6 +677,104 @@ export class TrickleStack extends cdk.Stack {
       destinationBucket: frontendBucket,
       distribution,
       distributionPaths: ["/*"],
+    });
+
+    // ========== Alarms ==========
+    // Every alarm notifies one topic. Only stages given an alert address
+    // (production, via ALERT_EMAIL in the deploy workflow) subscribe anyone;
+    // other stages still create the alarms, so their wiring gets exercised.
+    const alertsTopic = new sns.Topic(this, "AlertsTopic", {
+      topicName: `trickle-alerts-${stage}`,
+      displayName: `Trickle ${stage} alerts`,
+    });
+    if (props.alertEmail) {
+      alertsTopic.addSubscription(new snsSubscriptions.EmailSubscription(props.alertEmail));
+    }
+    const notify = new cloudwatchActions.SnsAction(alertsTopic);
+
+    const alarm = (id: string, description: string, props: cloudwatch.AlarmProps) => {
+      const created = new cloudwatch.Alarm(this, id, {
+        alarmName: `trickle-${stage}-${id}`,
+        alarmDescription: description,
+        ...props,
+      });
+      created.addAlarmAction(notify);
+      return created;
+    };
+
+    // Anything sitting in a failure queue is work that was given up on.
+    const queueNotEmpty = (id: string, queue: sqs.Queue, description: string) =>
+      alarm(id, description, {
+        metric: queue.metricApproximateNumberOfMessagesVisible({
+          period: cdk.Duration.minutes(5),
+          statistic: "Maximum",
+        }),
+        threshold: 0,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+
+    queueNotEmpty(
+      "email-dlq-not-empty",
+      emailDLQ,
+      "Email worker invocations exhausted their retries. Each message is a recipient that was not sent."
+    );
+    queueNotEmpty(
+      "ses-events-failures-not-empty",
+      sesEventsFailures,
+      "SES events could not be stored. Bounces or complaints may be missing from job metrics."
+    );
+
+    alarm("email-worker-errors", "The email worker failed at least once.", {
+      metric: workerFunction.metricErrors({ period: cdk.Duration.minutes(15), statistic: "Sum" }),
+      threshold: 0,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Job creation schedules every recipient before responding; a 555-recipient
+    // job already takes ~27s of the 30s limit, and a timeout leaves a
+    // half-created job whose schedules still send.
+    alarm(
+      "email-send-near-timeout",
+      "Job creation took over 25s of its 30s timeout. Larger jobs will be half-created.",
+      {
+        metric: emailSendFunction.metricDuration({
+          period: cdk.Duration.minutes(5),
+          statistic: "Maximum",
+        }),
+        threshold: 25_000,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // Account-wide reputation, published by SES. AWS reviews an account at
+    // 5% bounces / 0.1% complaints and can pause sending at 10% / 0.5%, so
+    // these fire at the review thresholds, well before sending is at risk.
+    const sesReputation = (metricName: string) =>
+      new cloudwatch.Metric({
+        namespace: "AWS/SES",
+        metricName,
+        period: cdk.Duration.hours(1),
+        statistic: "Maximum",
+      });
+    alarm("ses-bounce-rate", "SES account bounce rate reached the 5% review threshold.", {
+      metric: sesReputation("Reputation.BounceRate"),
+      threshold: 0.05,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    alarm("ses-complaint-rate", "SES account complaint rate reached the 0.1% review threshold.", {
+      metric: sesReputation("Reputation.ComplaintRate"),
+      threshold: 0.001,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
 
     // ========== Outputs ==========
