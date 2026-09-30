@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { jsonOrThrow, queryKeys } from "../queryKeys";
 import JobsTable, { type JobListItem } from "./JobsTable";
 import { formatDate } from "../utils/formatDate";
 import { calculateETA } from "../utils/calculateETA";
 import type { AuthFetch } from "../utils/authFetch";
+import { isActive, isCancellable, statusLabel } from "../utils/jobStatus";
 
 // Auto-refresh interval in milliseconds (while page is visible)
 // Collects SES events that arrive during and after job completion
@@ -58,17 +59,27 @@ interface JobData {
   totalRecipients: number;
   sent: number;
   failed: number;
+  /** Sent attempts SES may or may not have accepted; never resent automatically. */
+  unconfirmed?: number;
   createdAt: string;
   completedAt?: string;
   sender?: string;
   subject?: string;
   lastError?: {
-    email: string;
-    errorName: string;
+    email?: string;
+    errorName?: string;
     errorMessage: string;
   };
   lastErrorAt?: string;
   metrics?: JobMetrics;
+}
+
+interface RecipientRow {
+  idx: number;
+  email: string;
+  state: "pending" | "sending" | "sent" | "failed" | "unconfirmed";
+  error?: string;
+  settledAt?: string;
 }
 
 export default function JobStatus({
@@ -95,7 +106,7 @@ export default function JobStatus({
   // refetchInterval replaces the hand-rolled setInterval, and
   // refetchIntervalInBackground: false replaces the visibilitychange listener
   // that used to pause it.
-  const isSettled = (status?: string) => status === "completed" || status === "failed";
+  const isSettled = (status?: string) => status !== undefined && !isActive(status);
 
   const polling = {
     refetchIntervalInBackground: false,
@@ -125,12 +136,38 @@ export default function JobStatus({
       : AUTO_REFRESH_INTERVAL_MS,
   });
 
+  // Recipients that need a look: rejected ones, and ones whose send could not
+  // be confirmed either way. Only fetched when the counters say there are any.
+  const problemCount = (statusQuery.data?.failed ?? 0) + (statusQuery.data?.unconfirmed ?? 0);
+  const problemsQuery = useQuery({
+    queryKey: queryKeys.jobRecipients(activeJobId ?? "", problemCount),
+    queryFn: async () =>
+      (
+        (await jsonOrThrow(await authFetch(`${apiUrl}/email/jobs/${activeJobId}/recipients`))) as {
+          recipients: RecipientRow[];
+        }
+      ).recipients.filter((r) => r.state === "failed" || r.state === "unconfirmed"),
+    enabled: !!activeJobId && problemCount > 0,
+  });
+
+  const queryClient = useQueryClient();
+  const cancelJob = useMutation({
+    mutationFn: async (id: string) =>
+      jsonOrThrow(await authFetch(`${apiUrl}/email/jobs/${id}/cancel`, { method: "POST" })),
+    onSettled: (_data, _error, id) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobStatus(id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobs });
+    },
+  });
+
   const jobs = jobsQuery.data ?? [];
   const jobData = statusQuery.data ?? null;
   const eventMetrics = metricsQuery.data ?? null;
-  const loading = statusQuery.isPending;
+  // isLoading, not isPending: a disabled query (no job selected yet) stays
+  // pending forever, which used to lock the search button on "Loading...".
+  const loading = statusQuery.isLoading;
   const loadingJobs = jobsQuery.isPending;
-  const loadingMetrics = metricsQuery.isPending;
+  const loadingMetrics = metricsQuery.isLoading;
   const error = (statusQuery.error as Error | null)?.message ?? "";
 
   const selectJob = (id: string) => {
@@ -165,11 +202,22 @@ export default function JobStatus({
       </form>
 
       {error && <div className="error">{error}</div>}
+      {cancelJob.error && <div className="error">{(cancelJob.error as Error).message}</div>}
 
       {jobData && (
         <div className="job-details">
           {/* Progress Bar at Top - with time estimates */}
-          {jobData.status === "pending" &&
+          {jobData.status === "queued" && (
+            <div className="progress-section">
+              <div className="progress-header">
+                <span className="progress-label">
+                  {statusLabel("queued")}: waits for the job ahead of it to finish
+                </span>
+              </div>
+            </div>
+          )}
+
+          {(jobData.status === "sending" || jobData.status === "pending") &&
             (() => {
               const eta = calculateETA({
                 totalRecipients: jobData.totalRecipients,
@@ -205,12 +253,11 @@ export default function JobStatus({
             })()}
 
           {/* Completed Job Progress */}
-          {jobData.status !== "pending" && (
+          {!isActive(jobData.status) && (
             <div className="progress-section completed">
               <div className="progress-header">
                 <span className="progress-label">
-                  {jobData.status === "completed" ? "✅ Completed" : "❌ Failed"}: {jobData.sent}/
-                  {jobData.totalRecipients} sent
+                  {statusLabel(jobData.status)}: {jobData.sent}/{jobData.totalRecipients} sent
                 </span>
               </div>
               <div className="progress-bar">
@@ -321,6 +368,12 @@ export default function JobStatus({
               <label>Failed</label>
               <span className="error">{jobData.failed}</span>
             </div>
+            {(jobData.unconfirmed ?? 0) > 0 && (
+              <div className="stat stat-large warning">
+                <label>Unconfirmed</label>
+                <span className="error">{jobData.unconfirmed}</span>
+              </div>
+            )}
 
             {/* Email Event Metrics from job.metrics */}
             {jobData.metrics && (
@@ -439,16 +492,63 @@ export default function JobStatus({
             )}
           </div>
 
+          {isCancellable(jobData.status) && (
+            <form className="search-form" style={{ marginTop: "20px" }}>
+              <button
+                type="button"
+                disabled={cancelJob.isPending}
+                onClick={() => cancelJob.mutate(jobData.jobId)}
+              >
+                {cancelJob.isPending ? "Cancelling..." : "Cancel Job"}
+              </button>
+            </form>
+          )}
+
+          {problemsQuery.data && problemsQuery.data.length > 0 && (
+            <div className="error-details">
+              <h3>Recipients Needing Attention</h3>
+              {problemsQuery.data.some((r) => r.state === "unconfirmed") && (
+                <p>
+                  <strong>Unconfirmed</strong> means the send was attempted but its outcome is
+                  unknown. It is never retried automatically, so it cannot arrive twice; check the
+                  email logs for a Send event before sending to it again.
+                </p>
+              )}
+              <table>
+                <thead>
+                  <tr>
+                    <th>Recipient</th>
+                    <th>State</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {problemsQuery.data.map((r) => (
+                    <tr key={r.idx}>
+                      <td>{r.email}</td>
+                      <td>{r.state}</td>
+                      <td>{r.error ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {jobData.lastError && (
             <div className="error-details">
               <h3>Last Error</h3>
               <div className="error-info">
-                <p>
-                  <strong>Recipient:</strong> {jobData.lastError.email}
-                </p>
-                <p>
-                  <strong>Error Type:</strong> {jobData.lastError.errorName}
-                </p>
+                {jobData.lastError.email && (
+                  <p>
+                    <strong>Recipient:</strong> {jobData.lastError.email}
+                  </p>
+                )}
+                {jobData.lastError.errorName && (
+                  <p>
+                    <strong>Error Type:</strong> {jobData.lastError.errorName}
+                  </p>
+                )}
                 <p>
                   <strong>Message:</strong> {jobData.lastError.errorMessage}
                 </p>

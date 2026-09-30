@@ -1,5 +1,5 @@
-import { describe, test, expect } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { describe, test, expect, vi } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import EmailForm from "./EmailForm";
 import { mockFetch } from "../test/fetchMock";
 import { renderWithQuery } from "../test/renderWithQuery";
@@ -58,5 +58,40 @@ describe("EmailForm", () => {
     mockFetch(ROUTES);
     renderForm();
     await waitFor(() => expect(screen.getByDisplayValue("first@example.com")).toBeInTheDocument());
+  });
+
+  // The API creates at most one job per Idempotency-Key. A network error can
+  // hide whether a submission went through, so retrying it must reuse the key
+  // -- or the whole list is mailed twice -- while an edited form is a new
+  // submission with a new key.
+  test("reuses the Idempotency-Key when a submission is retried, not after an edit", async () => {
+    mockFetch(ROUTES);
+    const sendKeys: string[] = [];
+    const routed = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).includes("/email/send")) return routed(input, init);
+      sendKeys.push(new Headers(init?.headers).get("Idempotency-Key") ?? "");
+      throw new TypeError("Failed to fetch");
+    });
+
+    renderForm();
+    await waitFor(() => expect(screen.getByDisplayValue("first@example.com")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Sender Name"), { target: { value: "Sender" } });
+    fireEvent.change(screen.getByLabelText(/Recipients/), { target: { value: "a@example.com" } });
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "Hello" } });
+    const form = screen.getByLabelText("Subject").closest("form")!;
+
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByText(/Network error/)).toBeInTheDocument());
+    fireEvent.submit(form);
+    await waitFor(() => expect(sendKeys).toHaveLength(2));
+
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "Hello again" } });
+    fireEvent.submit(form);
+    await waitFor(() => expect(sendKeys).toHaveLength(3));
+
+    expect(sendKeys[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(sendKeys[1]).toBe(sendKeys[0]);
+    expect(sendKeys[2]).not.toBe(sendKeys[0]);
   });
 });

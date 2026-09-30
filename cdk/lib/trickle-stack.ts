@@ -20,6 +20,11 @@ import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as lambdaDestinations from "aws-cdk-lib/aws-lambda-destinations";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as events from "aws-cdk-lib/aws-events";
+import * as eventsTargets from "aws-cdk-lib/aws-events-targets";
+import * as sfn from "aws-cdk-lib/aws-stepfunctions";
+import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
 import * as path from "node:path";
 import { HANDLERS, type HandlerId } from "../../backend/functions/handlers.ts";
@@ -126,6 +131,25 @@ export class TrickleStack extends cdk.Stack {
       indexName: "userIndex",
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+    });
+
+    // Sparse index of the send queue: only queued and sending jobs carry the
+    // `queue` attribute, so this lists exactly the active jobs, oldest first.
+    jobsTable.addGlobalSecondaryIndex({
+      indexName: "queueIndex",
+      partitionKey: { name: "queue", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+    });
+
+    // One row per recipient per job: the send pipeline's source of truth for
+    // who has been sent what (see backend/functions/sender/model.ts).
+    const recipientsTable = new dynamodb.Table(this, "RecipientsTable", {
+      tableName: `trickle-recipients-${stage}`,
+      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "idx", type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: "ttl",
     });
 
     const configTable = new dynamodb.Table(this, "ConfigTable", {
@@ -297,14 +321,220 @@ export class TrickleStack extends cdk.Stack {
       })
     );
 
+    // ========== Send pipeline ==========
+    // One Step Functions execution per job walks its recipient rows, one at a
+    // time, rateLimit seconds apart; one job sends at a time. The logic and
+    // its guarantees are documented in backend/functions/sender/.
+    //
+    // The ARN is spelled out rather than taken from the state machine because
+    // its own Finalize task needs it (to start the next job), which would
+    // otherwise be a circular reference.
+    const sendJobStateMachineName = `trickle-${stage}-send-job`;
+    const sendJobStateMachineArn = this.formatArn({
+      service: "states",
+      resource: "stateMachine",
+      resourceName: sendJobStateMachineName,
+      arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+    });
+    const sendJobExecutionsArn = this.formatArn({
+      service: "states",
+      resource: "execution",
+      resourceName: `${sendJobStateMachineName}:*`,
+      arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+    });
+
+    const sendPipelineEnvironment = {
+      JOBS_TABLE_NAME: jobsTable.tableName,
+      RECIPIENTS_TABLE_NAME: recipientsTable.tableName,
+      SEND_JOB_STATE_MACHINE_ARN: sendJobStateMachineArn,
+      CONFIGURATION_SET_NAME: configurationSetName,
+      ATTACHMENTS_BUCKET_NAME: attachmentsBucket.bucketName,
+    };
+
+    /** Everything that can start, inspect or stop a job's execution. */
+    const grantExecutionControl = (fn: lambda.Function) => {
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["states:StartExecution"],
+          resources: [sendJobStateMachineArn],
+        })
+      );
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["states:DescribeExecution", "states:StopExecution"],
+          resources: [sendJobExecutionsArn],
+        })
+      );
+    };
+
+    const senderFunction = (
+      id: HandlerId,
+      name: string,
+      options: { timeout?: cdk.Duration; memorySize?: number } = {}
+    ) => {
+      const fn = new nodejs.NodejsFunction(this, id, {
+        functionName: `trickle-${stage}-${name}`,
+        runtime: lambda.Runtime.NODEJS_24_X,
+        ...handlerSource(id),
+        timeout: options.timeout ?? cdk.Duration.seconds(30),
+        memorySize: options.memorySize ?? 256,
+        environment: sendPipelineEnvironment,
+        logGroup: new logs.LogGroup(this, `${id}Logs`, {
+          logGroupName: `/aws/lambda/trickle-${stage}-${name}`,
+          retention: logs.RetentionDays.THREE_MONTHS,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      });
+      jobsTable.grantReadWriteData(fn);
+      recipientsTable.grantReadWriteData(fn);
+      grantExecutionControl(fn);
+      return fn;
+    };
+
+    const beginFunction = senderFunction("SendJobBegin", "send-job-begin");
+    // Long enough for S3 attachment reads plus one SES call. If it still times
+    // out mid-send, the retry finds the row claimed and reports it unconfirmed.
+    const sendOneFunction = senderFunction("SendJobSendOne", "send-job-send-one", {
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+    });
+    const recordOutcomeFunction = senderFunction("SendJobRecordOutcome", "send-job-record-outcome");
+    const finalizeFunction = senderFunction("SendJobFinalize", "send-job-finalize");
+    const reconcilerFunction = senderFunction("SendQueueReconciler", "send-queue-reconciler");
+
+    attachmentsBucket.grantRead(sendOneFunction);
+    sendOneFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:SendEmail"],
+        resources: ["*"],
+      })
+    );
+
+    new events.Rule(this, "SendQueueReconcilerSchedule", {
+      ruleName: `trickle-${stage}-send-queue-reconciler`,
+      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+      targets: [new eventsTargets.LambdaFunction(reconcilerFunction)],
+    });
+
+    // Lambda invocation failures that say nothing about whether the function
+    // ran. Retrying is safe for every task: SendOne's claim turns a re-run of a
+    // half-finished send into "unconfirmed", never into a second send.
+    const LAMBDA_INVOKE_ERRORS = [
+      "Lambda.ServiceException",
+      "Lambda.AWSLambdaException",
+      "Lambda.SdkClientException",
+      "Lambda.TooManyRequestsException",
+      "Lambda.Unknown",
+      "Sandbox.Timedout",
+      sfn.Errors.TIMEOUT,
+    ];
+    const task = (id: string, fn: lambda.IFunction, payload?: sfn.TaskInput) => {
+      const invoke = new tasks.LambdaInvoke(this, id, {
+        lambdaFunction: fn,
+        payloadResponseOnly: true,
+        retryOnServiceExceptions: false,
+        ...(payload ? { payload } : {}),
+      });
+      invoke.addRetry({
+        errors: LAMBDA_INVOKE_ERRORS,
+        interval: cdk.Duration.seconds(2),
+        backoffRate: 2,
+        maxAttempts: 6,
+      });
+      return invoke;
+    };
+
+    const jobIdOnly = sfn.TaskInput.fromObject({ jobId: sfn.JsonPath.stringAt("$.jobId") });
+    const settleRetry = {
+      errors: [sfn.Errors.ALL],
+      interval: cdk.Duration.seconds(5),
+      backoffRate: 2,
+      maxAttempts: 8,
+    };
+
+    const finalizeOk = task("Finalize", finalizeFunction, jobIdOnly).addRetry(settleRetry);
+    const finalizeFailed = task(
+      "FinalizeFailed",
+      finalizeFunction,
+      sfn.TaskInput.fromObject({
+        jobId: sfn.JsonPath.stringAt("$.jobId"),
+        caught: sfn.JsonPath.objectAt("$.caught"),
+      })
+    ).addRetry(settleRetry);
+    finalizeOk.next(new sfn.Succeed(this, "JobSettled"));
+    finalizeFailed.next(new sfn.Fail(this, "JobFailed", { error: "SendJobFailed" }));
+
+    const catchToFailed = { errors: [sfn.Errors.ALL], resultPath: "$.caught" };
+
+    const begin = task(
+      "Begin",
+      beginFunction,
+      sfn.TaskInput.fromObject({
+        jobId: sfn.JsonPath.stringAt("$.jobId"),
+        executionArn: sfn.JsonPath.executionId,
+      })
+    ).addCatch(finalizeFailed, catchToFailed);
+
+    const sendOne = task("SendOne", sendOneFunction)
+      // Throttled: SES did not take it. Back off for up to ~15 minutes.
+      .addRetry({
+        errors: ["RetryableSendError"],
+        interval: cdk.Duration.seconds(30),
+        backoffRate: 2,
+        maxAttempts: 5,
+      });
+
+    const recordOutcome = task("RecordOutcome", recordOutcomeFunction)
+      .addRetry(settleRetry)
+      .addCatch(finalizeFailed, catchToFailed);
+
+    sendOne
+      .addCatch(recordOutcome, {
+        errors: ["RetryableSendError", "RecordFailedError"],
+        resultPath: "$.caught",
+      })
+      .addCatch(finalizeFailed, catchToFailed);
+
+    const waitRate = new sfn.Wait(this, "WaitRateLimit", {
+      time: sfn.WaitTime.secondsPath("$.rateLimit"),
+    });
+    const nextRecipient = new sfn.Choice(this, "NextRecipient")
+      .when(sfn.Condition.booleanEquals("$.done", true), finalizeOk)
+      .when(sfn.Condition.booleanEquals("$.pace", true), waitRate.next(sendOne))
+      .otherwise(sendOne);
+    sendOne.next(nextRecipient);
+    recordOutcome.next(nextRecipient);
+
+    const definition = begin.next(
+      new sfn.Choice(this, "AnythingToSend")
+        .when(sfn.Condition.booleanEquals("$.done", true), finalizeOk)
+        .otherwise(sendOne)
+    );
+
+    const sendJobStateMachine = new sfn.StateMachine(this, "SendJobStateMachine", {
+      stateMachineName: sendJobStateMachineName,
+      stateMachineType: sfn.StateMachineType.STANDARD,
+      definitionBody: sfn.DefinitionBody.fromChainable(definition),
+      logs: {
+        destination: new logs.LogGroup(this, "SendJobStateMachineLogs", {
+          logGroupName: `/aws/vendedlogs/states/${sendJobStateMachineName}`,
+          retention: logs.RetentionDays.THREE_MONTHS,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+        level: sfn.LogLevel.ERROR,
+        // Execution data carries recipient addresses; keep it out of logs.
+        includeExecutionData: false,
+      },
+    });
+
     // Common environment for API functions
     const apiEnvironment = {
       JOBS_TABLE_NAME: jobsTable.tableName,
       CONFIG_TABLE_NAME: configTable.tableName,
       EMAIL_EVENTS_TABLE_NAME: emailEventsTable.tableName,
       ATTACHMENTS_BUCKET_NAME: attachmentsBucket.bucketName,
-      WORKER_FUNCTION_ARN: workerFunction.functionArn,
-      SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+      RECIPIENTS_TABLE_NAME: recipientsTable.tableName,
+      SEND_JOB_STATE_MACHINE_ARN: sendJobStateMachineArn,
       AUTH_PARAMETER_PATH: authParameterPath,
     };
 
@@ -337,6 +567,22 @@ export class TrickleStack extends cdk.Stack {
       functionName: `trickle-${stage}-email-list`,
       runtime: lambda.Runtime.NODEJS_24_X,
       ...handlerSource("EmailList"),
+      timeout: cdk.Duration.seconds(30),
+      environment: apiEnvironment,
+    });
+
+    const emailCancelFunction = new nodejs.NodejsFunction(this, "EmailCancel", {
+      functionName: `trickle-${stage}-email-cancel`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      ...handlerSource("EmailCancel"),
+      timeout: cdk.Duration.seconds(30),
+      environment: apiEnvironment,
+    });
+
+    const emailRecipientsFunction = new nodejs.NodejsFunction(this, "EmailRecipients", {
+      functionName: `trickle-${stage}-email-recipients`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      ...handlerSource("EmailRecipients"),
       timeout: cdk.Duration.seconds(30),
       environment: apiEnvironment,
     });
@@ -458,9 +704,11 @@ export class TrickleStack extends cdk.Stack {
       })
     );
 
-    // emailSendFunction - needs full permissions (Parameter Store, jobs, config, S3, SES, Scheduler, IAM)
+    // emailSendFunction - Parameter Store, jobs + recipients, config, S3, SES read, starting executions
     grantAuthParameterAccess(emailSendFunction);
     jobsTable.grantReadWriteData(emailSendFunction);
+    recipientsTable.grantWriteData(emailSendFunction);
+    grantExecutionControl(emailSendFunction);
     configTable.grantReadData(emailSendFunction);
     attachmentsBucket.grantReadWrite(emailSendFunction);
     emailSendFunction.addToRolePolicy(
@@ -469,18 +717,16 @@ export class TrickleStack extends cdk.Stack {
         resources: ["*"],
       })
     );
-    emailSendFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["scheduler:CreateSchedule", "scheduler:GetSchedule"],
-        resources: ["*"],
-      })
-    );
-    emailSendFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["iam:PassRole"],
-        resources: [schedulerRole.roleArn],
-      })
-    );
+
+    // emailCancelFunction - Parameter Store, jobs, stopping and starting executions
+    grantAuthParameterAccess(emailCancelFunction);
+    jobsTable.grantReadWriteData(emailCancelFunction);
+    grantExecutionControl(emailCancelFunction);
+
+    // emailRecipientsFunction - Parameter Store, jobs + recipients read-only
+    grantAuthParameterAccess(emailRecipientsFunction);
+    jobsTable.grantReadData(emailRecipientsFunction);
+    recipientsTable.grantReadData(emailRecipientsFunction);
 
     // ========== Route53 & ACM ==========
 
@@ -515,7 +761,7 @@ export class TrickleStack extends cdk.Stack {
           apigatewayv2.CorsHttpMethod.DELETE,
           apigatewayv2.CorsHttpMethod.OPTIONS,
         ],
-        allowHeaders: ["Content-Type", "Authorization"],
+        allowHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
         allowCredentials: false,
       },
     });
@@ -577,6 +823,24 @@ export class TrickleStack extends cdk.Stack {
       integration: new integrations.HttpLambdaIntegration(
         "EmailListIntegration",
         emailListFunction
+      ),
+    });
+
+    httpApi.addRoutes({
+      path: "/email/jobs/{jobId}/cancel",
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: new integrations.HttpLambdaIntegration(
+        "EmailCancelIntegration",
+        emailCancelFunction
+      ),
+    });
+
+    httpApi.addRoutes({
+      path: "/email/jobs/{jobId}/recipients",
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration(
+        "EmailRecipientsIntegration",
+        emailRecipientsFunction
       ),
     });
 
@@ -734,18 +998,65 @@ export class TrickleStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
 
-    // Job creation schedules every recipient before responding; a 555-recipient
-    // job already takes ~27s of the 30s limit, and a timeout leaves a
-    // half-created job whose schedules still send.
+    // A job whose execution failed has stopped part-way; its remaining
+    // recipients are still pending.
     alarm(
-      "email-send-near-timeout",
-      "Job creation took over 25s of its 30s timeout. Larger jobs will be half-created.",
+      "send-job-failed",
+      "A send job's workflow failed. Its remaining recipients were not sent.",
       {
-        metric: emailSendFunction.metricDuration({
+        metric: new cloudwatch.MathExpression({
+          expression: "failed + timedOut",
+          usingMetrics: {
+            failed: sendJobStateMachine.metricFailed({
+              period: cdk.Duration.minutes(5),
+              statistic: "Sum",
+            }),
+            timedOut: sendJobStateMachine.metricTimedOut({
+              period: cdk.Duration.minutes(5),
+              statistic: "Sum",
+            }),
+          },
           period: cdk.Duration.minutes(5),
-          statistic: "Maximum",
         }),
-        threshold: 25_000,
+        threshold: 0,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // SendOne logs a structured line for every recipient it cannot confirm
+    // (see reportUnconfirmed in sender/steps.ts). Each needs a human to check
+    // SES whether it went out, because the pipeline will not resend it.
+    const unconfirmed = new logs.MetricFilter(this, "UnconfirmedRecipientsFilter", {
+      logGroup: sendOneFunction.logGroup,
+      metricNamespace: "Trickle",
+      metricName: `UnconfirmedRecipients-${stage}`,
+      filterPattern: logs.FilterPattern.stringValue("$.event", "=", "UnconfirmedRecipient"),
+      metricValue: "1",
+      defaultValue: 0,
+    });
+    alarm(
+      "unconfirmed-recipients",
+      "A recipient could not be confirmed as sent or not sent. Check SES before resending by hand.",
+      {
+        metric: unconfirmed.metric({ period: cdk.Duration.minutes(5), statistic: "Sum" }),
+        threshold: 0,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    alarm(
+      "send-queue-reconciler-errors",
+      "The send queue reconciler is failing; queued jobs may not start.",
+      {
+        metric: reconcilerFunction.metricErrors({
+          period: cdk.Duration.minutes(15),
+          statistic: "Sum",
+        }),
+        threshold: 2,
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
         evaluationPeriods: 1,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
