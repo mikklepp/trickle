@@ -511,8 +511,38 @@ export class TrickleStack extends cdk.Stack {
         .otherwise(sendOne)
     );
 
+    // Step Functions checks at creation time that its role can deliver logs.
+    // CDK would attach those permissions as a separate policy created a second
+    // before the state machine, which IAM had not propagated yet: the first
+    // deploy failed with "The state machine IAM Role is not authorized to
+    // access the Log Destination". Inline on the role, they exist from the
+    // moment the role does, well before the state machine is created.
+    const sendJobRole = new iam.Role(this, "SendJobStateMachineRole", {
+      assumedBy: new iam.ServicePrincipal("states.amazonaws.com"),
+      inlinePolicies: {
+        LogDelivery: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              actions: [
+                "logs:CreateLogDelivery",
+                "logs:GetLogDelivery",
+                "logs:UpdateLogDelivery",
+                "logs:DeleteLogDelivery",
+                "logs:ListLogDeliveries",
+                "logs:PutResourcePolicy",
+                "logs:DescribeResourcePolicies",
+                "logs:DescribeLogGroups",
+              ],
+              resources: ["*"],
+            }),
+          ],
+        }),
+      },
+    });
+
     const sendJobStateMachine = new sfn.StateMachine(this, "SendJobStateMachine", {
       stateMachineName: sendJobStateMachineName,
+      role: sendJobRole,
       stateMachineType: sfn.StateMachineType.STANDARD,
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
       logs: {
