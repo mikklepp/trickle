@@ -184,7 +184,10 @@ before re-running with it.
    ```bash
    node scripts/migrate-region.mjs seed-suppression --stage production --from eu-west-1 --to eu-north-1 [--apply]
    ```
-3. **Retire eu-west-1.** `CDK_STAGE=production CDK_REGION=eu-west-1 npm run destroy`.
+3. **Retire eu-west-1.** Destroy only the main stack. `npm run destroy` is
+   `cdk destroy --all`, which would also delete the us-east-1 certificate
+   stack that the new deployment reuses:
+   `cd cdk && CDK_STAGE=production CDK_REGION=eu-west-1 npx cdk destroy TrickleStack-production --force`.
    The jobs, config and events tables and both S3 buckets are RETAINed and
    survive; everything else (functions, API domain, DNS records,
    CloudFront) is deleted, which frees the domains. Bucket names carry the
