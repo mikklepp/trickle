@@ -70,7 +70,7 @@ That's it! NPM workspaces automatically installs dependencies for backend, cdk, 
 
 ```bash
 # Set your AWS region
-export AWS_REGION=us-east-1
+export AWS_REGION=eu-north-1
 
 # Bootstrap CDK in your account
 npx cdk bootstrap aws://ACCOUNT-ID/$AWS_REGION
@@ -111,7 +111,7 @@ The stack requires the following environment variables:
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `CDK_STAGE` | Deployment stage/environment | No | Current username |
-| `AWS_REGION` | AWS region to deploy to | No | us-east-1 |
+| `AWS_REGION` | AWS region to deploy to (`CDK_REGION` wins if set) | No | eu-north-1 |
 | `AUTH_USERNAME` | Admin username for login | Yes | - |
 | `AUTH_PASSWORD` | Admin password for login | Yes | - |
 | `AUTH_SECRET` | JWT signing secret | No | Auto-generated |
@@ -124,7 +124,7 @@ Each developer can deploy their own isolated stage:
 # Set credentials (from project root)
 export AUTH_USERNAME=admin
 export AUTH_PASSWORD=your-secure-password
-export AWS_REGION=eu-west-1
+export AWS_REGION=eu-north-1
 
 # Deploy (automatically builds + deploys, uses your username as stage)
 npm run deploy
@@ -146,17 +146,65 @@ This creates:
 ### Deploy to Production
 
 ```bash
-export AUTH_USERNAME=admin
-export AUTH_PASSWORD=production-secure-password
-export AWS_REGION=eu-west-1
-
-CDK_STAGE=production npm run deploy
+CDK_STAGE=production CDK_REGION=eu-north-1 npm run deploy
 ```
+
+Production runs in **eu-north-1**; CI (`deploy.yml`) deploys it there on every push to `main`.
 
 This creates:
 - Stack: `trickle-production`
 - Frontend: `https://trickle.qed.fi`
 - API: `https://api.trickle.qed.fi`
+
+### Moving production to eu-north-1 (one-off, 2026)
+
+Production ran in eu-west-1 on the EventBridge-Scheduler pipeline. The move
+retires that stack and deploys the Step Functions pipeline fresh in
+eu-north-1 under the same names, so nothing has to run side by side. The
+UI and API are unreachable for roughly 30–40 minutes (mostly CloudFront
+releasing and re-creating `trickle.qed.fi`); sending is unaffected because
+step 1 waits until nothing is in flight. The identical stack was verified
+end to end in eu-north-1 as stage `e2e` first.
+
+Already in place: SES production access in eu-north-1 (same quota),
+`qed.fi` DKIM verified there, and the `mail.qed.fi` MAIL FROM MX pointing
+at `feedback-smtp.eu-north-1.amazonses.com`. CDK is bootstrapped there.
+
+Every script step below is a dry run without `--apply`; read its output
+before re-running with it.
+
+1. **Nothing in flight.** Pick a time with no job sending, then:
+   ```bash
+   node scripts/migrate-region.mjs preflight --stage production --from eu-west-1 --to eu-north-1
+   ```
+   It must report no schedules left. Unfinished `pending` jobs with no
+   schedules are leftovers of the old creation timeout, not in-flight work.
+2. **Seed suppression.** eu-west-1 never had account-level suppression on,
+   so its known-bad addresses exist only as bounce/complaint events:
+   ```bash
+   node scripts/migrate-region.mjs seed-suppression --stage production --from eu-west-1 --to eu-north-1 [--apply]
+   ```
+3. **Retire eu-west-1.** `CDK_STAGE=production CDK_REGION=eu-west-1 npm run destroy`.
+   The jobs, config and events tables and both S3 buckets are RETAINed and
+   survive; everything else (functions, API domain, DNS records,
+   CloudFront) is deleted, which frees the domains. Bucket names carry the
+   region, so the retained buckets do not block the new ones.
+4. **Deploy to eu-north-1.** Merge to `main`: CI deploys to eu-north-1 with
+   the production credentials from the repository secrets. (A local
+   `npm run deploy` would use your `cdk/.env` credentials instead.)
+5. **Copy config** (rate limit, default headers):
+   ```bash
+   node scripts/migrate-region.mjs copy-config --stage production --from eu-west-1 --to eu-north-1 [--apply]
+   ```
+6. **Check.** Log in at `https://trickle.qed.fi`, send to a few
+   `success@simulator.amazonses.com` addresses, confirm the job completes
+   and its Send/Delivery events appear. Confirm the `trickle-alerts-production`
+   email subscription if `ALERT_EMAIL` is set.
+7. **Later.** The retained eu-west-1 tables and buckets only hold 30-day
+   history; delete them once it is no longer wanted (the tables
+   `trickle-{jobs,config,email-events}-production` and the buckets
+   `trickle-{attachments,frontend}-production-<account>`, all in eu-west-1). Then remove the `CDK_REGION` repository
+   secret, which nothing reads any more.
 
 ## Frontend Deployment
 
@@ -203,10 +251,10 @@ You can have multiple stages running simultaneously:
 
 ```bash
 # Developer 1
-CDK_STAGE=alice AWS_REGION=eu-west-1 npm run deploy
+CDK_STAGE=alice npm run deploy
 
 # Developer 2
-CDK_STAGE=bob AWS_REGION=us-east-1 npm run deploy
+CDK_STAGE=bob npm run deploy
 
 # Staging
 CDK_STAGE=staging npm run deploy
@@ -242,11 +290,10 @@ Resources follow these naming conventions:
 | Resource Type | Format | Example |
 |---------------|--------|---------|
 | Stack | `trickle-{stage}` | `trickle-mikko` |
-| Lambda | `trickle-{function}-{stage}` | `trickle-email-worker-mikko` |
+| Lambda | `trickle-{stage}-{function}` | `trickle-mikko-send-job-send-one` |
 | DynamoDB | `trickle-{table}-{stage}` | `trickle-jobs-mikko` |
-| S3 Bucket | `trickle-{purpose}-{stage}-{account}` | `trickle-attachments-mikko-123456789` |
+| S3 Bucket | `trickle-{purpose}-{stage}-{region}-{account}` | `trickle-attachments-mikko-eu-north-1-123456789` |
 | Secrets | `trickle-{stage}` | `trickle-mikko` |
-| IAM Role | `trickle-{purpose}-{stage}` | `trickle-scheduler-mikko` |
 
 ## Differences from SST
 
@@ -311,12 +358,13 @@ The single `TrickleStack` contains all resources:
 
 1. **Secrets Manager** - Authentication credentials
 2. **S3 Buckets** - Attachments (with 7-day lifecycle) and frontend hosting
-3. **DynamoDB Tables** - Jobs and Config with GSI
-4. **SQS Queue** - Dead letter queue for failed emails
+3. **DynamoDB Tables** - Jobs (with user and send-queue GSIs), Recipients, Config, Email events
+4. **Step Functions** - `SendJob` state machine: one execution per job, sending its recipients one at a time
 5. **Lambda Functions**:
-   - Email Worker (invoked by EventBridge Scheduler)
-   - 8 API handlers (auth, senders, email CRUD, config, quota)
-6. **IAM Roles** - EventBridge Scheduler role
+   - Send pipeline tasks (begin, send one, record outcome, finalize) and a 1-minute queue reconciler
+   - API handlers (auth, senders, email send/status/list/cancel/recipients, events, config, quota)
+   - SES events processor (SNS subscriber)
+6. **SQS Queue** - On-failure queue for SES events that could not be stored
 7. **API Gateway v2** - HTTP API with custom domain
 8. **CloudFront** - Frontend distribution with custom domain
 9. **Route53** - A records for custom domains

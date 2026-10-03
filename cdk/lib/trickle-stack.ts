@@ -94,8 +94,11 @@ export class TrickleStack extends cdk.Stack {
     });
 
     // ========== S3 Bucket for Attachments ==========
+    // Bucket names are global across regions, so they carry the region: a
+    // stage can then be moved to another region while the old region's
+    // retained buckets still exist (as production's did, moving from eu-west-1).
     const attachmentsBucket = new s3.Bucket(this, "AttachmentsBucket", {
-      bucketName: `trickle-attachments-${stage}-${this.account}`,
+      bucketName: `trickle-attachments-${stage}-${this.region}-${this.account}`,
       removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: !isProduction,
       cors: [
@@ -157,26 +160,6 @@ export class TrickleStack extends cdk.Stack {
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-    });
-
-    // Legacy email events table, keyed by *processing* time: same-millisecond
-    // events overwrote each other and SNS redeliveries duplicated rows. Nothing
-    // reads or writes it any more; it is kept only so
-    // scripts/backfill-events-v2.mjs can copy its last 30 days into the v2
-    // table, and is removed once that retention window has passed.
-    const legacyEmailEventsTable = new dynamodb.Table(this, "EmailEventsTable", {
-      tableName: `trickle-email-events-${stage}`,
-      partitionKey: { name: "jobId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "timestamp", type: dynamodb.AttributeType.NUMBER },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-      timeToLiveAttribute: "ttl",
-    });
-
-    legacyEmailEventsTable.addGlobalSecondaryIndex({
-      indexName: "recipientIndex",
-      partitionKey: { name: "recipient", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "timestamp", type: dynamodb.AttributeType.NUMBER },
     });
 
     // Email events table (stores SES events - Send, Delivery, Bounce, Complaint, Open, Click, etc)
@@ -266,60 +249,6 @@ export class TrickleStack extends cdk.Stack {
 
     // Grant Lambda permission to write to email events table
     emailEventsTable.grantWriteData(sesEventsProcessor);
-
-    // ========== SQS Dead Letter Queue ==========
-    const emailDLQ = new sqs.Queue(this, "EmailDLQ", {
-      queueName: `trickle-email-dlq-${stage}`,
-      retentionPeriod: cdk.Duration.days(14),
-    });
-
-    // ========== Lambda Functions ==========
-
-    // Worker Lambda (invoked by EventBridge Scheduler)
-    const workerFunction = new nodejs.NodejsFunction(this, "EmailWorker", {
-      functionName: `trickle-${stage}-email-worker`,
-      runtime: lambda.Runtime.NODEJS_24_X,
-      ...handlerSource("EmailWorker"),
-      timeout: cdk.Duration.minutes(2),
-      deadLetterQueue: emailDLQ,
-      environment: {
-        JOBS_TABLE_NAME: jobsTable.tableName,
-        ATTACHMENTS_BUCKET_NAME: attachmentsBucket.bucketName,
-        EMAIL_DLQ_URL: emailDLQ.queueUrl,
-        CONFIGURATION_SET_NAME: configurationSetName,
-      },
-    });
-
-    // Grant permissions to worker
-    jobsTable.grantReadWriteData(workerFunction);
-    attachmentsBucket.grantRead(workerFunction);
-
-    workerFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["ses:SendEmail"],
-        resources: ["*"],
-      })
-    );
-
-    workerFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["scheduler:DeleteSchedule"],
-        resources: ["*"],
-      })
-    );
-
-    // IAM Role for EventBridge Scheduler to invoke worker
-    const schedulerRole = new iam.Role(this, "SchedulerRole", {
-      roleName: `trickle-scheduler-${stage}`,
-      assumedBy: new iam.ServicePrincipal("scheduler.amazonaws.com"),
-    });
-
-    schedulerRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["lambda:InvokeFunction"],
-        resources: [workerFunction.functionArn],
-      })
-    );
 
     // ========== Send pipeline ==========
     // One Step Functions execution per job walks its recipient rows, one at a
@@ -932,7 +861,7 @@ export class TrickleStack extends cdk.Stack {
 
     // S3 bucket for frontend
     const frontendBucket = new s3.Bucket(this, "FrontendBucket", {
-      bucketName: `trickle-frontend-${stage}-${this.account}`,
+      bucketName: `trickle-frontend-${stage}-${this.region}-${this.account}`,
       removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: !isProduction,
       publicReadAccess: false,
@@ -1010,23 +939,10 @@ export class TrickleStack extends cdk.Stack {
       });
 
     queueNotEmpty(
-      "email-dlq-not-empty",
-      emailDLQ,
-      "Email worker invocations exhausted their retries. Each message is a recipient that was not sent."
-    );
-    queueNotEmpty(
       "ses-events-failures-not-empty",
       sesEventsFailures,
       "SES events could not be stored. Bounces or complaints may be missing from job metrics."
     );
-
-    alarm("email-worker-errors", "The email worker failed at least once.", {
-      metric: workerFunction.metricErrors({ period: cdk.Duration.minutes(15), statistic: "Sum" }),
-      threshold: 0,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-      evaluationPeriods: 1,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-    });
 
     // A job whose execution failed has stopped part-way; its remaining
     // recipients are still pending.
@@ -1128,40 +1044,6 @@ export class TrickleStack extends cdk.Stack {
     new cdk.CfnOutput(this, "FrontendUrl", {
       value: `https://${frontendDomain}`,
       description: "Frontend URL",
-    });
-
-    new cdk.CfnOutput(this, "WorkerFunctionArn", {
-      value: workerFunction.functionArn,
-      description: "Email Worker Lambda ARN",
-    });
-
-    // ========== Lambda Log Groups ==========
-    // Export all log group names as JSON for logging scripts
-    const logGroups = [
-      { name: "SES Events Processor", logGroup: `/aws/lambda/${sesEventsProcessor.functionName}` },
-      { name: "Email Worker", logGroup: `/aws/lambda/${workerFunction.functionName}` },
-      { name: "Auth Login", logGroup: `/aws/lambda/${authLoginFunction.functionName}` },
-      { name: "Senders List", logGroup: `/aws/lambda/${sendersListFunction.functionName}` },
-      { name: "Email Send", logGroup: `/aws/lambda/${emailSendFunction.functionName}` },
-      { name: "Email List", logGroup: `/aws/lambda/${emailListFunction.functionName}` },
-      { name: "Email Status", logGroup: `/aws/lambda/${emailStatusFunction.functionName}` },
-      { name: "Config Get", logGroup: `/aws/lambda/${configGetFunction.functionName}` },
-      { name: "Config Update", logGroup: `/aws/lambda/${configUpdateFunction.functionName}` },
-      { name: "Account Quota", logGroup: `/aws/lambda/${accountQuotaFunction.functionName}` },
-      {
-        name: "Email Events Summary",
-        logGroup: `/aws/lambda/${emailEventsSummaryFunction.functionName}`,
-      },
-      {
-        name: "Email Events Logs",
-        logGroup: `/aws/lambda/${emailEventsLogsFunction.functionName}`,
-      },
-    ];
-
-    new cdk.CfnOutput(this, "LogGroupNames", {
-      value: JSON.stringify(logGroups),
-      description: "All Lambda log group names as JSON",
-      exportName: `trickle-log-groups-${stage}`,
     });
   }
 }

@@ -61,14 +61,14 @@ jobs:
         working-directory: cdk
         env:
           CDK_DEFAULT_ACCOUNT: "000000000000"
-          CDK_REGION: eu-west-1
+          CDK_REGION: eu-north-1
           CDK_STAGE: ci
           AUTH_USERNAME: ci
           AUTH_PASSWORD: ci
         run: |
           cat > cdk.context.json <<'JSON'
           {
-            "hosted-zone:account=000000000000:domainName=qed.fi:region=eu-west-1":
+            "hosted-zone:account=000000000000:domainName=qed.fi:region=eu-north-1":
               { "Id": "/hostedzone/ZCIDUMMYCIDUMMY01", "Name": "qed.fi." },
             "hosted-zone:account=000000000000:domainName=qed.fi:region=us-east-1":
               { "Id": "/hostedzone/ZCIDUMMYCIDUMMY01", "Name": "qed.fi." }

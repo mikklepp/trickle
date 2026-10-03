@@ -205,7 +205,7 @@ export class FakeExecutions implements Executions {
   started: string[] = [];
 
   arnFor(jobId: string) {
-    return `arn:aws:states:eu-west-1:0:execution:send-job:${jobId}`;
+    return `arn:aws:states:eu-north-1:0:execution:send-job:${jobId}`;
   }
   async describe(executionArn: string) {
     return this.status.get(executionArn) ?? "MISSING";

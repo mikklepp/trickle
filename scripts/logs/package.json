@@ -13,7 +13,6 @@
     "trickle-logs": "dist/index.js"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudformation": "^3.917.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.917.0"
   },
   "devDependencies": {

@@ -10,7 +10,6 @@
  */
 export const HANDLERS = {
   SESEventsProcessor: { module: "api/ses-events-processor.ts", export: "handler" },
-  EmailWorker: { module: "worker/index.ts", export: "handler" },
   AuthLogin: { module: "api/auth.ts", export: "login" },
   SendersList: { module: "api/senders.ts", export: "list" },
   EmailSend: { module: "api/email.ts", export: "send" },

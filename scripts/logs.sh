@@ -2,13 +2,13 @@
 
 # CloudWatch Logs helper script for Trickle
 # Tails multiple Lambda log groups in parallel
-# Reads log group names from CDK Outputs
+# Finds the stage's Lambda log groups by name prefix
 
 set -e
 
 # Determine the stage (defaults to current username)
 STAGE="${CDK_STAGE:-${USER:-dev}}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_REGION="${AWS_REGION:-eu-north-1}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -21,28 +21,30 @@ print_header() {
   echo "Region: $AWS_REGION"
 }
 
-# Fetch log groups from CDK Output
+# Discover the stage's Lambda log groups by name: every function is named
+# trickle-<stage>-<suffix>, and the suffix says what it is (send-*, config-*,
+# email-events-*, ses-events-processor, ...). This used to read a JSON stack
+# output, but CloudFormation caps output values at 1024 characters, which the
+# list outgrew. Output: [{"name": "<suffix>", "logGroup": "<full name>"}].
 get_log_groups() {
-  # Try to get from CloudFormation - use --output json to preserve the JSON string properly
-  local log_groups_json=$(aws cloudformation describe-stacks \
-    --stack-name "trickle-${STAGE}" \
-    --query "Stacks[0].Outputs[?OutputKey=='LogGroupNames'].OutputValue" \
-    --output text \
-    --region "$AWS_REGION" 2>/dev/null || echo "")
+  local prefix="/aws/lambda/trickle-${STAGE}-"
+  local log_groups_json
+  log_groups_json=$(aws logs describe-log-groups \
+    --log-group-name-prefix "$prefix" \
+    --query 'logGroups[].logGroupName' \
+    --output json \
+    --region "$AWS_REGION" 2>/dev/null || echo "[]")
 
-  if [ -z "$log_groups_json" ]; then
-    echo -e "${RED}Error: Could not fetch log groups from CloudFormation stack trickle-${STAGE}${NC}"
-    echo "Is the stack deployed? Use: npm run deploy"
+  # CDK's own custom-resource functions share the prefix but are CamelCase.
+  log_groups_json=$(jq --arg p "$prefix" \
+    '[.[] | {name: ltrimstr($p), logGroup: .} | select(.name | test("^[a-z0-9-]+$"))]' \
+    <<< "$log_groups_json")
+
+  if [ "$(jq length <<< "$log_groups_json")" -eq 0 ]; then
+    echo -e "${RED}Error: No log groups under ${prefix} in ${AWS_REGION}${NC}" >&2
+    echo "Is the stack deployed in this region? Set AWS_REGION (production: eu-north-1)." >&2
     exit 1
   fi
-
-  # The output is a JSON string, but we need to ensure it's parseable by jq
-  # Try to parse it - if it fails, the error will be caught
-  echo "$log_groups_json" | jq . > /dev/null 2>&1 || {
-    echo -e "${RED}Error: Invalid JSON in CloudFormation output${NC}"
-    echo "Output was: $log_groups_json"
-    exit 1
-  }
 
   echo "$log_groups_json"
 }
@@ -60,45 +62,13 @@ tail_log_group() {
 case "${1:-all}" in
   debug)
     print_header
-    echo -e "\n${YELLOW}Debug: Fetching CloudFormation output...${NC}\n"
-
-    echo "Stack name: trickle-${STAGE}"
-    echo "Region: $AWS_REGION"
-    echo ""
-
-    cf_output=$(aws cloudformation describe-stacks \
-      --stack-name "trickle-${STAGE}" \
-      --query "Stacks[0].Outputs" \
-      --output json \
-      --region "$AWS_REGION" 2>&1)
-
-    echo "CloudFormation output:"
-    echo "$cf_output" | jq . || echo "$cf_output"
-    echo ""
-
-    echo "Attempting to extract LogGroupNames..."
-    log_groups_json=$(aws cloudformation describe-stacks \
-      --stack-name "trickle-${STAGE}" \
-      --query "Stacks[0].Outputs[?OutputKey=='LogGroupNames'].OutputValue" \
-      --output text \
-      --region "$AWS_REGION" 2>&1)
-
-    echo "Raw output:"
-    echo "$log_groups_json"
-    echo ""
-
-    if [ -z "$log_groups_json" ]; then
-      echo -e "${RED}Output is empty - stack may not be deployed or output not found${NC}"
-      exit 1
-    fi
-
-    echo "Parsed as JSON:"
-    echo "$log_groups_json" | jq . || echo -e "${RED}Failed to parse as JSON${NC}"
+    echo -e "\n${YELLOW}Debug: log groups discovered under /aws/lambda/trickle-${STAGE}-${NC}\n"
+    get_log_groups | jq .
     ;;
 
   all)
     print_header
-    echo -e "\n${YELLOW}Fetching log groups from CloudFormation...${NC}\n"
+    echo -e "\n${YELLOW}Fetching log groups...${NC}\n"
 
     LOG_GROUPS=$(get_log_groups)
 
@@ -119,7 +89,7 @@ case "${1:-all}" in
 
     while IFS= read -r log_group; do
       tail_log_group "$log_group" "API Function"
-    done < <(jq -r '.[] | select(.name != "Email Worker" and .name != "SES Events Processor") | .logGroup' <<< "$LOG_GROUPS")
+    done < <(jq -r '.[] | select((.name | startswith("send-") | not) and .name != "ses-events-processor") | .logGroup' <<< "$LOG_GROUPS")
 
     echo -e "\n${GREEN}API log tails started. Press Ctrl+C to stop.${NC}"
     wait
@@ -130,8 +100,9 @@ case "${1:-all}" in
     echo -e "\n${YELLOW}Fetching worker log group...${NC}\n"
 
     LOG_GROUPS=$(get_log_groups)
-    LOG_GROUP=$(jq -r '.[] | select(.name == "Email Worker") | .logGroup' <<< "$LOG_GROUPS")
-    [ -n "$LOG_GROUP" ] && tail_log_group "$LOG_GROUP" "Email Worker"
+    while IFS=$'\t' read -r NAME LOG_GROUP; do
+      tail_log_group "$LOG_GROUP" "$NAME"
+    done < <(jq -r '.[] | select(.name | startswith("send-")) | [.name, .logGroup] | @tsv' <<< "$LOG_GROUPS")
 
     echo -e "\n${GREEN}Worker log tail started. Press Ctrl+C to stop.${NC}"
     wait
@@ -142,7 +113,7 @@ case "${1:-all}" in
     echo -e "\n${YELLOW}Fetching processor log group...${NC}\n"
 
     LOG_GROUPS=$(get_log_groups)
-    LOG_GROUP=$(jq -r '.[] | select(.name == "SES Events Processor") | .logGroup' <<< "$LOG_GROUPS")
+    LOG_GROUP=$(jq -r '.[] | select(.name == "ses-events-processor") | .logGroup' <<< "$LOG_GROUPS")
     [ -n "$LOG_GROUP" ] && tail_log_group "$LOG_GROUP" "SES Events Processor"
 
     echo -e "\n${GREEN}Processor log tail started. Press Ctrl+C to stop.${NC}"
@@ -157,7 +128,7 @@ case "${1:-all}" in
 
     while IFS= read -r log_group; do
       tail_log_group "$log_group" "Config Function"
-    done < <(jq -r '.[] | select(.name == "Config Get" or .name == "Config Update") | .logGroup' <<< "$LOG_GROUPS")
+    done < <(jq -r '.[] | select(.name | startswith("config-")) | .logGroup' <<< "$LOG_GROUPS")
 
     echo -e "\n${GREEN}Config log tails started. Press Ctrl+C to stop.${NC}"
     wait
@@ -171,7 +142,7 @@ case "${1:-all}" in
 
     while IFS= read -r log_group; do
       tail_log_group "$log_group" "Email Events Function"
-    done < <(jq -r '.[] | select(.name == "Email Events Summary" or .name == "Email Events Logs") | .logGroup' <<< "$LOG_GROUPS")
+    done < <(jq -r '.[] | select(.name | startswith("email-events-")) | .logGroup' <<< "$LOG_GROUPS")
 
     echo -e "\n${GREEN}Email Events log tails started. Press Ctrl+C to stop.${NC}"
     wait
@@ -181,13 +152,13 @@ case "${1:-all}" in
     echo "Usage: ./scripts/logs.sh {all|api|worker|processor|config|events|debug}"
     echo ""
     echo "Options:"
-    echo "  all       - Tail all Lambda log groups (reads from CloudFormation)"
+    echo "  all       - Tail all of the stage's Lambda log groups"
     echo "  api       - Tail API-related functions"
-    echo "  worker    - Tail email worker function"
+    echo "  worker    - Tail the send pipeline (Step Functions task) functions"
     echo "  processor - Tail SES event processor function"
     echo "  config    - Tail config management functions"
     echo "  events    - Tail email events functions"
-    echo "  debug     - Debug CloudFormation output (troubleshoot JSON issues)"
+    echo "  debug     - List the log groups found for the stage"
     echo ""
     echo "Stage: ${STAGE} (set CDK_STAGE to override)"
     echo "Region: ${AWS_REGION} (set AWS_REGION to override)"

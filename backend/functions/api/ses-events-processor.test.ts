@@ -7,7 +7,7 @@ const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const mail = (over: Partial<SESEvent["mail"]> = {}): SESEvent["mail"] => ({
   timestamp: "2026-09-26T10:00:00.000Z",
   source: "sender@example.com",
-  sourceArn: "arn:aws:ses:eu-west-1:000000000000:identity/example.com",
+  sourceArn: "arn:aws:ses:eu-north-1:000000000000:identity/example.com",
   sourceIp: "192.0.2.1",
   sendingAccountId: "000000000000",
   messageId: "msg-1",
