@@ -507,9 +507,21 @@ button[type="submit"]:disabled {
   font-weight: 500;
 }
 
-.status-badge.pending {
+.status-badge.pending,
+.status-badge.queued,
+.status-badge.sending {
   background: #fff4e6;
   color: #f39c12;
+}
+
+.status-badge.failed {
+  background: #ffe6e6;
+  color: #e74c3c;
+}
+
+.status-badge.cancelled {
+  background: #eceff1;
+  color: #607d8b;
 }
 
 .status-badge.completed {

@@ -12,12 +12,12 @@ async function main() {
   // Stage: from env var or current username (like SST)
   const stage = process.env.CDK_STAGE || process.env.USER || os.userInfo().username || "dev";
 
-  // Region: from env var or default to us-east-1
+  // Region: from env var, or eu-north-1 where production runs
   const region =
     process.env.CDK_REGION ||
     process.env.AWS_REGION ||
     process.env.CDK_DEFAULT_REGION ||
-    "us-east-1";
+    "eu-north-1";
 
   // Account: from env var or get from AWS STS
   let account = process.env.CDK_DEFAULT_ACCOUNT || process.env.AWS_ACCOUNT_ID;
@@ -79,6 +79,7 @@ async function main() {
     authPassword,
     authSecret,
     frontendCertificateArn: certificateStack.certificateArn,
+    alertEmail: process.env.ALERT_EMAIL || undefined,
     tags: {
       Stage: stage,
       Project: "Trickle",

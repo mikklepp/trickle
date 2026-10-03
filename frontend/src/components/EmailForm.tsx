@@ -51,7 +51,9 @@ interface Quota {
   productionAccessEnabled: boolean;
 }
 
-const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+// Mirrors the API: the whole request has to fit Lambda's 6MB payload limit
+// once base64-encoded, which leaves 4MB of attachments in total.
+const MAX_TOTAL_ATTACHMENT_SIZE = 4 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = {
   "application/pdf": ".pdf",
   "image/jpeg": ".jpg,.jpeg",
@@ -109,6 +111,17 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // One key per submission, reused if that submission is retried (say after a
+  // network error hid whether it went through), so the API can recognise the
+  // retry and not create -- and send -- the job twice. Editing what is being
+  // sent starts a new submission.
+  const [submissionKey, setSubmissionKey] = useState<string | null>(null);
+  const editing =
+    <T,>(setter: (value: T) => void) =>
+    (value: T) => {
+      setter(value);
+      setSubmissionKey(null);
+    };
 
   const saveRecentSender = (email: string, name: string = "") => {
     const newSender: RecentSender = { email, name: name || undefined };
@@ -164,6 +177,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
     if (!files) return;
 
     const newAttachments: Attachment[] = [];
+    let totalSize = attachments.reduce((sum, a) => sum + a.size, 0);
 
     for (let file of Array.from(files)) {
       // Validate file type
@@ -190,10 +204,11 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
       }
 
       // Validate size after compression
-      if (file.size > MAX_ATTACHMENT_SIZE) {
-        setError(`${file.name} is too large (max 10MB)`);
+      if (totalSize + file.size > MAX_TOTAL_ATTACHMENT_SIZE) {
+        setError(`${file.name} does not fit: attachments are limited to 4MB in total`);
         continue;
       }
+      totalSize += file.size;
 
       // Read file as base64
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -216,12 +231,15 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
       });
     }
 
-    setAttachments([...attachments, ...newAttachments]);
-    setError("");
+    if (newAttachments.length > 0) {
+      setAttachments([...attachments, ...newAttachments]);
+      setSubmissionKey(null);
+    }
   };
 
   const removeAttachment = (index: number) => {
     setAttachments(attachments.filter((_, i) => i !== index));
+    setSubmissionKey(null);
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -287,6 +305,8 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
     }
 
     setLoading(true);
+    const idempotencyKey = submissionKey ?? crypto.randomUUID();
+    setSubmissionKey(idempotencyKey);
 
     try {
       // Format sender as RFC 5322: "Name" <email@example.com>
@@ -298,6 +318,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
           sender: formattedSender,
@@ -323,6 +344,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
         setSubject("");
         setContent("");
         setAttachments([]);
+        setSubmissionKey(null);
       } else {
         setError(data.error || "Failed to send email");
       }
@@ -452,7 +474,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
           <textarea
             id="recipients"
             value={recipients}
-            onChange={(e) => setRecipients(e.target.value)}
+            onChange={(e) => editing(setRecipients)(e.target.value)}
             placeholder="email1@example.com; email2@example.com; email3@example.com"
             rows={3}
             required
@@ -486,7 +508,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
             id="subject"
             type="text"
             value={subject}
-            onChange={(e) => setSubject(e.target.value)}
+            onChange={(e) => editing(setSubject)(e.target.value)}
             required
           />
         </div>
@@ -496,7 +518,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
           <ReactQuill
             theme="snow"
             value={content}
-            onChange={setContent}
+            onChange={editing(setContent)}
             placeholder="Write your email content here..."
             modules={{
               toolbar: [
@@ -519,7 +541,7 @@ export default function EmailForm({ apiUrl, authFetch, onJobCreated }: EmailForm
 
         <div className="form-group">
           <label htmlFor="attachments">
-            Attachments (PDF, JPEG, PNG, GIF, WebP - max 10MB each)
+            Attachments (PDF, JPEG, PNG, GIF, WebP - max 4MB in total)
             <br />
             <small>Images &gt;1MB will be automatically compressed</small>
           </label>

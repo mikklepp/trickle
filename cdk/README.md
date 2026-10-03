@@ -10,7 +10,7 @@ The project uses NPM workspaces. Deploy from the project root:
 # From project root
 export AUTH_USERNAME=admin
 export AUTH_PASSWORD=your-password
-export AWS_REGION=eu-west-1
+export AWS_REGION=eu-north-1
 
 # Deploy (automatically builds frontend + CDK)
 npm run deploy
@@ -31,7 +31,7 @@ CDK_STAGE=production npm run deploy # trickle.qed.fi
 
 - `AUTH_USERNAME` - Admin username
 - `AUTH_PASSWORD` - Admin password
-- `AWS_REGION` - AWS region (default: us-east-1)
+- `AWS_REGION` - AWS region (default: eu-north-1)
 
 Optional:
 - `CDK_STAGE` - Stage name (default: current username)
@@ -52,14 +52,14 @@ cdk/
 
 ## Stack Resources
 
-- **Lambda Functions**: Email worker + 8 API handlers
+- **Step Functions**: `SendJob`, one execution per send job
+- **Lambda Functions**: Send pipeline tasks, queue reconciler, API handlers, SES events processor
 - **DynamoDB Tables**: Jobs (with GSI) and Config
 - **S3 Buckets**: Attachments and frontend hosting
 - **API Gateway v2**: REST API with custom domain
 - **CloudFront**: Frontend distribution
 - **Route53**: DNS records
 - **Secrets Manager**: Auth credentials
-- **IAM Roles**: EventBridge Scheduler role
 
 ## Useful Commands
 

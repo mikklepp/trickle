@@ -32,8 +32,8 @@ trickle/
 ├── package-lock.json           # Single lock file for all workspaces
 ├── backend/                    # Lambda function code
 │   ├── functions/
-│   │   ├── api/               # 8 API Lambda handlers
-│   │   └── worker/            # Email worker Lambda
+│   │   ├── api/               # API Lambda handlers
+│   │   └── sender/            # Send pipeline (Step Functions tasks)
 │   └── package.json           # Backend dependencies
 ├── cdk/                        # AWS CDK infrastructure
 │   ├── bin/                   # CDK app entry point
@@ -107,18 +107,19 @@ npm run logs:api            # Stream API Lambda logs only
 
 **Backend** (Node.js Lambda)
 - Email API: `/auth`, `/senders`, `/email/send`, `/email/status`, `/email/events`, `/config`
-- Email Worker: Processes jobs from EventBridge Scheduler
+- Send pipeline: one Step Functions execution per job sends each recipient at most once, one job at a time
 - SES integration: Sends emails via AWS SES v2 API
 
 **Database** (DynamoDB)
 - `Jobs` table: Send jobs and status tracking
+- `Recipients` table: Per-recipient send state (pending, sent, failed, unconfirmed)
 - `Config` table: Per-user rate limit configuration
 - Global Secondary Index for querying by timestamp
 
 **Infrastructure** (AWS CDK)
 - API Gateway v2 (HTTP API) with custom domain
 - CloudFront + S3 for frontend hosting
-- EventBridge Scheduler for rate-limited email delivery
+- Step Functions for rate-limited, at-most-once email delivery
 - Route53 for DNS management
 - ACM certificates for HTTPS
 

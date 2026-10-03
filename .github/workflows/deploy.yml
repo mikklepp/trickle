@@ -45,7 +45,12 @@ jobs:
         run: npm run deploy
         env:
           CDK_STAGE: production
-          CDK_REGION: ${{ secrets.CDK_REGION }}
+          # Production moved from eu-west-1 to eu-north-1 (see DEPLOYMENT.md,
+          # "Moving production to eu-north-1"). Not a secret: spelled out here
+          # so the region a merge deploys to is part of the reviewed code.
+          CDK_REGION: eu-north-1
           AUTH_USERNAME: ${{ secrets.AUTH_USERNAME }}
           AUTH_PASSWORD: ${{ secrets.AUTH_PASSWORD }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          # Repository variable; unset means alarms are created but notify nobody.
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}

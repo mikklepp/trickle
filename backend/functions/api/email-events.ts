@@ -1,4 +1,4 @@
-import { DynamoDBClient, QueryCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { verifyToken } from "./auth.ts";
 import { classifyEvent, type EventClassification } from "./event-classifier.ts";
@@ -63,18 +63,6 @@ export async function summary(event: any) {
       };
     }
 
-    // Query DynamoDB for events with this jobId
-    const queryResult = await dynamodb.send(
-      new QueryCommand({
-        TableName: tableName,
-        KeyConditionExpression: "jobId = :jobId",
-        ExpressionAttributeValues: {
-          ":jobId": { S: jobId },
-        },
-        Select: "ALL_ATTRIBUTES",
-      })
-    );
-
     // Initialize summary with all event types
     const summary: EventSummary = {
       Send: 0,
@@ -87,16 +75,29 @@ export async function summary(event: any) {
       Click: 0,
     };
 
-    // Count events by type
-    if (queryResult.Items) {
-      for (const item of queryResult.Items) {
-        const unmarshalled = unmarshall(item);
-        const eventType = unmarshalled.eventType as string;
-        if (eventType && summary.hasOwnProperty(eventType)) {
+    // Count events by type. A single Query stops at 1MB, so page through
+    // everything or large jobs silently under-count.
+    let lastEvalKey: Record<string, any> | undefined = undefined;
+    do {
+      const page = await dynamodb.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "jobId = :jobId",
+          ExpressionAttributeValues: {
+            ":jobId": { S: jobId },
+          },
+          ProjectionExpression: "eventType",
+          ExclusiveStartKey: lastEvalKey,
+        })
+      );
+      for (const item of page.Items ?? []) {
+        const eventType = unmarshall(item).eventType as string;
+        if (eventType && Object.hasOwn(summary, eventType)) {
           summary[eventType]++;
         }
       }
-    }
+      lastEvalKey = page.LastEvaluatedKey;
+    } while (lastEvalKey);
 
     return {
       statusCode: 200,
@@ -183,7 +184,7 @@ export async function logs(event: any) {
           ExpressionAttributeValues: {
             ":jobId": { S: jobId },
           },
-          ScanIndexForward: false, // Sort by timestamp descending (latest first)
+          ScanIndexForward: false, // eventKey leads with the event time: latest first
           Limit: limit,
           ExclusiveStartKey: lastEvalKey,
         })
@@ -222,7 +223,7 @@ export async function logs(event: any) {
         classifiedEvents.push({ ...email, ...classification });
         lastAcceptedKey = {
           jobId: { S: unmarshalled.jobId },
-          timestamp: { N: String(unmarshalled.timestamp) },
+          eventKey: { S: unmarshalled.eventKey },
         };
       }
 

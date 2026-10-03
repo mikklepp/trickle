@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
-import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
-import { CloudWatchLogsClient, FilterLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
+import {
+  CloudWatchLogsClient,
+  DescribeLogGroupsCommand,
+  FilterLogEventsCommand,
+} from "@aws-sdk/client-cloudwatch-logs";
 
 // Color codes for terminal output
 const colors = {
@@ -25,30 +28,36 @@ interface Options {
   debug: boolean;
 }
 
+/**
+ * The stage's Lambda log groups, found by name: every function is named
+ * trickle-<stage>-<suffix>, and `name` is that suffix (send-job-send-one,
+ * config-get, ...). This used to read a JSON stack output, which outgrew
+ * CloudFormation's 1024-character limit for output values.
+ */
 async function getLogGroups(stage: string, region: string): Promise<LogGroup[]> {
-  const cfClient = new CloudFormationClient({ region });
-
-  try {
-    const response = await cfClient.send(
-      new DescribeStacksCommand({
-        StackName: `trickle-${stage}`,
-      })
+  const client = new CloudWatchLogsClient({ region });
+  const prefix = `/aws/lambda/trickle-${stage}-`;
+  const groups: LogGroup[] = [];
+  let nextToken: string | undefined;
+  do {
+    const page = await client.send(
+      new DescribeLogGroupsCommand({ logGroupNamePrefix: prefix, nextToken })
     );
-
-    const outputs = response.Stacks?.[0]?.Outputs || [];
-    const logGroupsOutput = outputs.find((o) => o.OutputKey === "LogGroupNames");
-
-    if (!logGroupsOutput?.OutputValue) {
-      throw new Error(`LogGroupNames output not found in stack trickle-${stage}`);
+    for (const { logGroupName } of page.logGroups ?? []) {
+      const name = logGroupName!.slice(prefix.length);
+      // CDK's own custom-resource functions share the prefix but are CamelCase.
+      if (/^[a-z0-9-]+$/.test(name)) groups.push({ name, logGroup: logGroupName! });
     }
+    nextToken = page.nextToken;
+  } while (nextToken);
 
-    return JSON.parse(logGroupsOutput.OutputValue);
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error(`${colors.red}Error fetching log groups: ${error.message}${colors.reset}`);
-    }
+  if (groups.length === 0) {
+    console.error(
+      `${colors.red}No log groups under ${prefix} in ${region}. Is the stack deployed there?${colors.reset}`
+    );
     process.exit(1);
   }
+  return groups;
 }
 
 async function filterLogGroups(logGroups: LogGroup[], filter: string): Promise<LogGroup[]> {
@@ -57,18 +66,16 @@ async function filterLogGroups(logGroups: LogGroup[], filter: string): Promise<L
       return logGroups;
     case "api":
       return logGroups.filter(
-        (lg) => lg.name !== "Email Worker" && lg.name !== "SES Events Processor"
+        (lg) => !lg.name.startsWith("send-") && lg.name !== "ses-events-processor"
       );
     case "worker":
-      return logGroups.filter((lg) => lg.name === "Email Worker");
+      return logGroups.filter((lg) => lg.name.startsWith("send-"));
     case "processor":
-      return logGroups.filter((lg) => lg.name === "SES Events Processor");
+      return logGroups.filter((lg) => lg.name === "ses-events-processor");
     case "config":
-      return logGroups.filter((lg) => lg.name === "Config Get" || lg.name === "Config Update");
+      return logGroups.filter((lg) => lg.name.startsWith("config-"));
     case "events":
-      return logGroups.filter(
-        (lg) => lg.name === "Email Events Summary" || lg.name === "Email Events Logs"
-      );
+      return logGroups.filter((lg) => lg.name.startsWith("email-events-"));
     default:
       throw new Error(
         `Unknown filter: ${filter}. Use: all, api, worker, processor, config, or events`
@@ -134,7 +141,7 @@ async function main(): Promise<void> {
   const filter = args[0] || "all";
 
   const stage = process.env.CDK_STAGE || process.env.USER || "dev";
-  const region = process.env.AWS_REGION || "us-east-1";
+  const region = process.env.AWS_REGION || "eu-north-1";
   const debug = process.env.DEBUG === "1";
 
   const options: Options = {
@@ -219,7 +226,7 @@ ${colors.bright}Usage:${colors.reset}
 ${colors.bright}Filters:${colors.reset}
   all        - Tail all Lambda log groups
   api        - Tail API-related functions
-  worker     - Tail email worker
+  worker     - Tail the send pipeline functions
   processor  - Tail SES event processor
   config     - Tail config management functions
   events     - Tail email events functions
@@ -227,7 +234,7 @@ ${colors.bright}Filters:${colors.reset}
 
 ${colors.bright}Environment Variables:${colors.reset}
   CDK_STAGE  - Stage name (defaults to $USER)
-  AWS_REGION - AWS region (defaults to us-east-1)
+  AWS_REGION - AWS region (defaults to eu-north-1)
   DEBUG      - Set to '1' for debug output
 
 ${colors.bright}Examples:${colors.reset}

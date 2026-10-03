@@ -135,10 +135,11 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions
 
 Add the following secrets:
 
+The deploy region is not a secret: `deploy.yml` sets `CDK_REGION` (eu-north-1) itself.
+
 #### For OIDC (Option A):
 ```
 AWS_ROLE_TO_ASSUME = arn:aws:iam::YOUR_ACCOUNT_ID:role/github-trickle-deploy
-AWS_REGION = eu-west-1
 AUTH_USERNAME = (your auth username)
 AUTH_PASSWORD = (your auth password)
 AUTH_SECRET = (your JWT secret, can be generated with: openssl rand -hex 32)
@@ -148,7 +149,6 @@ AUTH_SECRET = (your JWT secret, can be generated with: openssl rand -hex 32)
 ```
 AWS_ACCESS_KEY_ID = (from step 2)
 AWS_SECRET_ACCESS_KEY = (from step 2)
-AWS_REGION = eu-west-1
 AUTH_USERNAME = (your auth username)
 AUTH_PASSWORD = (your auth password)
 AUTH_SECRET = (your JWT secret, can be generated with: openssl rand -hex 32)

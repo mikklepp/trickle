@@ -10,6 +10,9 @@ export const queryKeys = {
   jobs: ["jobs"] as const,
   jobStatus: (jobId: string) => ["jobStatus", jobId] as const,
   eventsSummary: (jobId: string) => ["eventsSummary", jobId] as const,
+  // Keyed by the failed+unconfirmed count, so the list refetches exactly when it grows.
+  jobRecipients: (jobId: string, problemCount: number) =>
+    ["jobRecipients", jobId, problemCount] as const,
   eventLogs: (
     jobId: string,
     eventType: string | null,
