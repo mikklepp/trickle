@@ -39,6 +39,13 @@ updates:
           - "*"
         update-types:
           - "major"
+      # Groups above apply to version updates only. Without this, every
+      # security fix (mostly transitive lockfile bumps) arrives as its own PR,
+      # and each one conflicts with the others in package-lock.json.
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
